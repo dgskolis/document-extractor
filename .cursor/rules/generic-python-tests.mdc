@@ -1,0 +1,25 @@
+---
+description: Testing Standards
+globs: ["tests//*.py", "/test_*.py"]
+alwaysApply: true
+---
+
+# Testing Rules
+
+- Use pytest for all tests.
+- Target code coverage > 90%.
+- Test behavior, not implementation details.
+- Cover:
+  - Happy paths
+  - Edge cases
+  - Validation failures
+  - Error handling paths
+- Use fixtures to reduce duplication.
+- Mock external APIs, databases, file systems, and third-party services.
+- Tests must be deterministic and independent.
+- Follow Arrange-Act-Assert structure.
+- Prefer parametrized tests for multiple scenarios.
+- Keep tests simple, readable, and maintainable.
+- Every bug fix should include a regression test.
+- Avoid unnecessary mocking of internal application code.
+- Verify retry, timeout, and rate-limiting behavior when applicable.

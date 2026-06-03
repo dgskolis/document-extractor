@@ -4,14 +4,21 @@ import { toast } from "sonner";
 import { ExtractedDataCard } from "@/components/upload/extracted-data-card";
 import { DocumentUploadSection } from "@/components/upload/document-upload-section";
 import { ManualOrderForm } from "@/components/upload/manual-order-form";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import { GENERIC_UPLOAD_ERROR_MESSAGE } from "@/api/upload-errors";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { useUpload } from "@/hooks/useUpload";
 import type { ExtractedPatient } from "@/types";
 
 export default function UploadPage() {
+  usePageTitle("Upload");
+
   const {
     file,
     extractedPatient,
+    extractionFailed,
+    referenceId,
     processing,
     progress,
     selectFile,
@@ -37,7 +44,7 @@ export default function UploadPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold tracking-tight">Upload</h1>
 
-      <ManualOrderForm prefill={prefillData} />
+      <ManualOrderForm prefill={prefillData} disabled={processing} />
 
       <Separator />
 
@@ -47,9 +54,24 @@ export default function UploadPage() {
           file={file}
           processing={processing}
           progress={progress}
+          disabled={processing}
           onFileSelect={handleFileSelect}
           onProcess={() => void processDocument()}
         />
+        {extractionFailed && !processing && (
+          <Alert variant="destructive">
+            <AlertTitle>Extraction failed</AlertTitle>
+            <AlertDescription>
+              {GENERIC_UPLOAD_ERROR_MESSAGE}
+              {referenceId ? (
+                <>
+                  {" "}
+                  Reference: <span className="font-mono">{referenceId}</span>
+                </>
+              ) : null}
+            </AlertDescription>
+          </Alert>
+        )}
         {extractedPatient && !processing && (
           <ExtractedDataCard
             data={extractedPatient}

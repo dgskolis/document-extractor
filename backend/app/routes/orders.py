@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -10,14 +12,24 @@ from app.exceptions import (
     TextExtractionError,
     UnsupportedMediaTypeError,
 )
+from app.logging_context import generate_reference_id, log_upload_event
 from app.models.order import Order
 from app.schemas.document import (
     DocumentUploadResponse,
     build_order_create_from_extraction,
     build_partial_extraction_detail,
     build_text_extraction_error_detail,
+    build_upload_error_detail,
 )
 from app.schemas.order import OrderCreate, OrderListResponse, OrderResponse, OrderUpdate
+from app.schemas.upload_errors import (
+    REASON_FILE_TOO_LARGE,
+    REASON_LLM_EXTRACTION_FAILED,
+    REASON_OPENAI_NOT_CONFIGURED,
+    REASON_PARTIAL_EXTRACTION,
+    REASON_TEXT_EXTRACTION_FAILED,
+    REASON_UNSUPPORTED_MEDIA_TYPE,
+)
 from app.services import document_service, order_service, patient_extraction_service
 
 router = APIRouter(
@@ -52,55 +64,120 @@ def list_orders(
 )
 def upload_document(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
 ) -> DocumentUploadResponse:
+    reference_id = generate_reference_id()
+    content_type = file.content_type
+
     try:
         content = document_service.read_upload_content(file)
     except FileTooLargeError as exc:
+        log_upload_event(
+            logging.WARNING,
+            "Upload rejected because file exceeds size limit",
+            reference_id=reference_id,
+            stage="upload_read",
+            reason_code=REASON_FILE_TOO_LARGE,
+            content_type=content_type,
+        )
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=str(exc),
+            detail=build_upload_error_detail(reference_id=reference_id),
         ) from exc
 
     try:
         document_text = document_service.extract_text(
             content,
-            content_type=file.content_type,
+            content_type=content_type,
             filename=file.filename,
+            reference_id=reference_id,
         )
     except UnsupportedMediaTypeError as exc:
+        log_upload_event(
+            logging.WARNING,
+            "Upload rejected due to unsupported media type",
+            reference_id=reference_id,
+            stage="text_extraction",
+            reason_code=REASON_UNSUPPORTED_MEDIA_TYPE,
+            content_type=content_type,
+            content_length=len(content),
+        )
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Unsupported file type",
+            detail=build_upload_error_detail(reference_id=reference_id),
         ) from exc
     except TextExtractionError as exc:
+        log_upload_event(
+            logging.WARNING,
+            "Upload failed during text extraction",
+            reference_id=reference_id,
+            stage="text_extraction",
+            reason_code=REASON_TEXT_EXTRACTION_FAILED,
+            content_type=content_type,
+            content_length=len(content),
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=build_text_extraction_error_detail(),
+            detail=build_text_extraction_error_detail(reference_id=reference_id),
         ) from exc
 
     try:
-        extracted_fields = patient_extraction_service.extract_patient_fields(document_text)
+        extracted_fields = patient_extraction_service.extract_patient_fields(
+            document_text,
+            reference_id=reference_id,
+        )
     except OpenAIConfigurationError as exc:
+        log_upload_event(
+            logging.ERROR,
+            "Upload failed because OpenAI is not configured",
+            reference_id=reference_id,
+            stage="patient_extraction",
+            reason_code=REASON_OPENAI_NOT_CONFIGURED,
+            text_length=len(document_text),
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="OpenAI API key not configured",
+            detail=build_upload_error_detail(reference_id=reference_id),
         ) from exc
     except PatientExtractionError as exc:
+        log_upload_event(
+            logging.ERROR,
+            "Upload failed during patient field extraction",
+            reference_id=reference_id,
+            stage="patient_extraction",
+            reason_code=REASON_LLM_EXTRACTION_FAILED,
+            text_length=len(document_text),
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Patient field extraction failed",
+            detail=build_upload_error_detail(reference_id=reference_id),
         ) from exc
 
-    order_in = build_order_create_from_extraction(extracted_fields)
+    order_in = build_order_create_from_extraction(extracted_fields, reference_id=reference_id)
     if order_in is None:
+        log_upload_event(
+            logging.WARNING,
+            "Upload completed with partial patient field extraction",
+            reference_id=reference_id,
+            stage="order_validation",
+            reason_code=REASON_PARTIAL_EXTRACTION,
+            text_length=len(document_text),
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=build_partial_extraction_detail(extracted_fields),
+            detail=build_partial_extraction_detail(extracted_fields, reference_id=reference_id),
         )
 
-    order = order_service.create_order(db, order_in)
-    return DocumentUploadResponse(extraction=extracted_fields, order=order)
+    log_upload_event(
+        logging.INFO,
+        "Upload completed successfully",
+        reference_id=reference_id,
+        stage="complete",
+        reason_code="upload_completed",
+        content_type=content_type,
+        content_length=len(content),
+        text_length=len(document_text),
+    )
+    return DocumentUploadResponse(extraction=extracted_fields)
 
 
 @router.get("/{order_id}", response_model=OrderResponse)

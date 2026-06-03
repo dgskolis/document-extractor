@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,6 +10,7 @@ from app.database import (
     check_connection,
     check_schema_ready,
     get_sqlalchemy_database_url,
+    run_migrations,
     sqlite_path_from_url,
 )
 
@@ -76,6 +78,25 @@ def test_check_schema_ready_fails_when_orders_table_missing(tmp_path: Path) -> N
 
     with pytest.raises(RuntimeError, match="Required database tables are missing"):
         check_schema_ready(db_url)
+
+
+def test_run_migrations_preserves_application_loggers(tmp_path: Path) -> None:
+    logging.basicConfig(level=logging.INFO, force=True)
+    app_logger = logging.getLogger("app.main")
+    access_logger = logging.getLogger("uvicorn.access")
+
+    db_file = tmp_path / "migrate_test.db"
+    db_url = f"sqlite:///{db_file}"
+    test_engine = create_engine(
+        get_sqlalchemy_database_url(db_url),
+        connect_args={"check_same_thread": False},
+    )
+
+    with patch("app.database.engine", test_engine):
+        run_migrations()
+
+    assert app_logger.disabled is False
+    assert access_logger.disabled is False
 
 
 def test_check_schema_ready_fails_when_activity_logs_table_missing(tmp_path: Path) -> None:

@@ -1,4 +1,8 @@
-import apiClient from "./client";
+import apiClient, { isApiError } from "./client";
+import {
+  GENERIC_UPLOAD_ERROR_MESSAGE,
+  UploadDocumentError,
+} from "./upload-errors";
 import type {
   ExtractedPatient,
   Order,
@@ -32,7 +36,12 @@ interface BackendExtraction {
 
 interface BackendDocumentUploadResponse {
   extraction: BackendExtraction;
-  order: BackendOrder;
+}
+
+interface BackendUploadErrorResponse {
+  error?: string;
+  reference_id?: string;
+  extraction?: BackendExtraction;
 }
 
 function mapStatus(status: string): OrderStatus {
@@ -95,6 +104,17 @@ function mapUpdatePayload(data: OrderUpdateInput): Record<string, unknown> {
   return payload;
 }
 
+function parseUploadErrorResponse(data: unknown): UploadDocumentError {
+  const payload = (data ?? {}) as BackendUploadErrorResponse;
+  const partialPatient = payload.extraction
+    ? mapExtraction(payload.extraction)
+    : null;
+  const referenceId =
+    typeof payload.reference_id === "string" ? payload.reference_id : null;
+
+  return new UploadDocumentError(partialPatient, referenceId);
+}
+
 export async function getOrders(): Promise<Order[]> {
   const { data } = await apiClient.get<BackendOrderListResponse>("/api/v1/orders");
   return data.items.map(mapOrder);
@@ -129,15 +149,29 @@ export async function uploadDocument(file: File): Promise<ExtractedPatient> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const { data } = await apiClient.post<BackendDocumentUploadResponse>(
-    "/api/v1/orders/upload-document",
-    formData,
-    {
-      headers: {
-        "Content-Type": "multipart/form-data",
+  try {
+    const { data } = await apiClient.post<BackendDocumentUploadResponse>(
+      "/api/v1/orders/upload-document",
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       },
-    },
-  );
+    );
 
-  return mapExtraction(data.extraction);
+    return mapExtraction(data.extraction);
+  } catch (error) {
+    const responseData = isApiError(error) ? error.responseData : undefined;
+    if (responseData && typeof responseData === "object") {
+      const payload = responseData as BackendUploadErrorResponse;
+      if (payload.reference_id || payload.extraction) {
+        throw parseUploadErrorResponse(payload);
+      }
+    }
+
+    throw new UploadDocumentError(null, null);
+  }
 }
+
+export { GENERIC_UPLOAD_ERROR_MESSAGE, mapExtraction };

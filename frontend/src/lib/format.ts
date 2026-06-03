@@ -12,14 +12,16 @@ export function formatDate(iso: string): string {
   }).format(new Date(iso));
 }
 
-export function statusBadgeClass(status: OrderStatus): string {
+export function statusBadgeVariant(
+  status: OrderStatus,
+): "secondary" | "default" | "outline" {
   switch (status) {
     case "pending":
-      return "bg-gray-100 text-gray-700 hover:bg-gray-100";
+      return "secondary";
     case "processing":
-      return "bg-blue-100 text-blue-700 hover:bg-blue-100";
+      return "default";
     case "complete":
-      return "bg-green-100 text-green-700 hover:bg-green-100";
+      return "outline";
   }
 }
 

@@ -1,9 +1,12 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import { toast } from "sonner";
 
 import { uploadDocument } from "@/api/orders";
-import { ORDERS_QUERY_KEY } from "@/hooks/useOrders";
+import { isUploadDocumentError } from "@/api/upload-errors";
+import {
+  hasExtractedPatientData,
+  isExtractedPatientEmpty,
+} from "@/lib/extraction";
 import type { ExtractedPatient } from "@/types";
 
 const PDF_MIME = "application/pdf";
@@ -15,18 +18,45 @@ function isPdfFile(file: File): boolean {
 }
 
 export function useUpload() {
-  const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [extractedPatient, setExtractedPatient] =
     useState<ExtractedPatient | null>(null);
+  const [extractionFailed, setExtractionFailed] = useState(false);
+  const [referenceId, setReferenceId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
 
   const uploadMutation = useMutation({
     mutationFn: uploadDocument,
-    onSuccess: async (result) => {
+    onSuccess: (result) => {
       setProgress(100);
+      setReferenceId(null);
+
+      if (isExtractedPatientEmpty(result)) {
+        setExtractedPatient(null);
+        setExtractionFailed(true);
+        return;
+      }
+
       setExtractedPatient(result);
-      await queryClient.invalidateQueries({ queryKey: ORDERS_QUERY_KEY });
+      setExtractionFailed(false);
+    },
+    onError: (error) => {
+      if (isUploadDocumentError(error)) {
+        setReferenceId(error.referenceId);
+        if (error.partialPatient && hasExtractedPatientData(error.partialPatient)) {
+          setExtractedPatient(error.partialPatient);
+        } else {
+          setExtractedPatient(null);
+        }
+        setExtractionFailed(true);
+        setProgress(0);
+        return;
+      }
+
+      setExtractedPatient(null);
+      setReferenceId(null);
+      setExtractionFailed(true);
+      setProgress(0);
     },
   });
 
@@ -34,6 +64,8 @@ export function useUpload() {
     if (!selectedFile) {
       setFile(null);
       setExtractedPatient(null);
+      setExtractionFailed(false);
+      setReferenceId(null);
       setProgress(0);
       return true;
     }
@@ -44,6 +76,8 @@ export function useUpload() {
 
     setFile(selectedFile);
     setExtractedPatient(null);
+    setExtractionFailed(false);
+    setReferenceId(null);
     setProgress(0);
     return true;
   }, []);
@@ -51,6 +85,8 @@ export function useUpload() {
   const clearFile = useCallback(() => {
     setFile(null);
     setExtractedPatient(null);
+    setExtractionFailed(false);
+    setReferenceId(null);
     setProgress(0);
   }, []);
 
@@ -61,6 +97,8 @@ export function useUpload() {
 
     setProgress(0);
     setExtractedPatient(null);
+    setExtractionFailed(false);
+    setReferenceId(null);
 
     const startTime = Date.now();
     const progressInterval = window.setInterval(() => {
@@ -71,10 +109,7 @@ export function useUpload() {
 
     try {
       await uploadMutation.mutateAsync(file);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to process document";
-      toast.error(message);
+    } catch {
       setProgress(0);
     } finally {
       window.clearInterval(progressInterval);
@@ -84,6 +119,8 @@ export function useUpload() {
   return {
     file,
     extractedPatient,
+    extractionFailed,
+    referenceId,
     processing: uploadMutation.isPending,
     progress,
     selectFile,

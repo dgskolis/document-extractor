@@ -7,7 +7,7 @@ import {
   formatDate,
   formatPatientName,
   formatStatusLabel,
-  statusBadgeClass,
+  statusBadgeVariant,
 } from "@/lib/format";
 import type { Order } from "@/types";
 
@@ -26,10 +26,7 @@ export const columns: ColumnDef<Order>[] = [
     accessorKey: "status",
     header: "Status",
     cell: ({ row }) => (
-      <Badge
-        variant="secondary"
-        className={statusBadgeClass(row.original.status)}
-      >
+      <Badge variant={statusBadgeVariant(row.original.status)}>
         {formatStatusLabel(row.original.status)}
       </Badge>
     ),

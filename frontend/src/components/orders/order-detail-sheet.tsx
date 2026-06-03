@@ -12,7 +12,7 @@ import {
   formatDate,
   formatPatientName,
   formatStatusLabel,
-  statusBadgeClass,
+  statusBadgeVariant,
 } from "@/lib/format";
 import type { Order } from "@/types";
 
@@ -56,10 +56,7 @@ export function OrderDetailSheet({
             <DetailRow
               label="Status"
               value={
-                <Badge
-                  variant="secondary"
-                  className={statusBadgeClass(order.status)}
-                >
+                <Badge variant={statusBadgeVariant(order.status)}>
                   {formatStatusLabel(order.status)}
                 </Badge>
               }

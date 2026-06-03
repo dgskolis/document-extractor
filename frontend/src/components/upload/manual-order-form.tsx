@@ -22,9 +22,13 @@ import type { ExtractedPatient } from "@/types";
 
 interface ManualOrderFormProps {
   prefill?: ExtractedPatient | null;
+  disabled?: boolean;
 }
 
-export function ManualOrderForm({ prefill = null }: ManualOrderFormProps) {
+export function ManualOrderForm({
+  prefill = null,
+  disabled = false,
+}: ManualOrderFormProps) {
   const { create, isSubmitting } = useCreateOrder();
 
   const {
@@ -60,16 +64,16 @@ export function ManualOrderForm({ prefill = null }: ManualOrderFormProps) {
         patient_last_name: "",
         date_of_birth: "",
       });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to create order";
-      toast.error(message);
+    } catch {
+      // Error toast handled globally by mutation cache
     }
   });
 
+  const isDisabled = disabled || isSubmitting;
+
   return (
     <form onSubmit={onSubmit}>
-      <FieldSet>
+      <FieldSet disabled={isDisabled}>
         <FieldLegend>Create Order Manually</FieldLegend>
         <FieldGroup>
           <Field data-invalid={!!errors.patient_first_name || undefined}>
@@ -77,6 +81,7 @@ export function ManualOrderForm({ prefill = null }: ManualOrderFormProps) {
             <Input
               id="patient_first_name"
               autoComplete="given-name"
+              disabled={isDisabled}
               aria-invalid={!!errors.patient_first_name}
               {...register("patient_first_name")}
             />
@@ -87,6 +92,7 @@ export function ManualOrderForm({ prefill = null }: ManualOrderFormProps) {
             <Input
               id="patient_last_name"
               autoComplete="family-name"
+              disabled={isDisabled}
               aria-invalid={!!errors.patient_last_name}
               {...register("patient_last_name")}
             />
@@ -97,13 +103,14 @@ export function ManualOrderForm({ prefill = null }: ManualOrderFormProps) {
             <Input
               id="date_of_birth"
               type="date"
+              disabled={isDisabled}
               aria-invalid={!!errors.date_of_birth}
               {...register("date_of_birth")}
             />
             <FieldError errors={[errors.date_of_birth]} />
           </Field>
           <Field orientation="horizontal">
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isDisabled}>
               {isSubmitting ? "Creating..." : "Create Order"}
             </Button>
           </Field>

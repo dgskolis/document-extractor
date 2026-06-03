@@ -3,6 +3,8 @@ from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 
+from app.models.order import Order
+
 
 def test_create_order(client: TestClient, sample_order_payload: dict[str, str]) -> None:
     response = client.post("/api/v1/orders/", json=sample_order_payload)
@@ -11,7 +13,7 @@ def test_create_order(client: TestClient, sample_order_payload: dict[str, str]) 
     assert data["patient_first_name"] == "Jane"
     assert data["patient_last_name"] == "Doe"
     assert data["date_of_birth"] == "1990-05-15"
-    assert data["status"] == "pending"
+    assert data["status"] == "in_progress"
     assert uuid.UUID(data["id"])
     assert "created_at" in data
     assert "updated_at" in data
@@ -32,6 +34,28 @@ def test_create_order_rejects_future_dob(client: TestClient, sample_order_payloa
         json={**sample_order_payload, "date_of_birth": future_dob},
     )
     assert response.status_code == 422
+
+
+def test_list_orders_excludes_pending(client: TestClient, db_session, sample_order_payload: dict[str, str]) -> None:
+    create_response = client.post("/api/v1/orders/", json=sample_order_payload)
+    created_order_id = create_response.json()["id"]
+
+    pending_order = Order(
+        patient_first_name="Hidden",
+        patient_last_name="Patient",
+        date_of_birth=date(1980, 1, 1),
+        status="pending",
+    )
+    db_session.add(pending_order)
+    db_session.commit()
+
+    response = client.get("/api/v1/orders/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+    assert data["items"][0]["id"] == created_order_id
+    assert data["items"][0]["status"] == "in_progress"
 
 
 def test_list_orders(client: TestClient, sample_order_payload: dict[str, str]) -> None:

@@ -4,13 +4,16 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app.schemas.upload_errors import GENERIC_UPLOAD_ERROR
 
-def test_format_http_exception_content_includes_extraction() -> None:
+
+def test_format_http_exception_content_includes_extraction_and_reference_id() -> None:
     from app.exception_handlers import format_http_exception_content
 
     content = format_http_exception_content(
         {
-            "message": "Could not extract all required patient fields from document",
+            "message": GENERIC_UPLOAD_ERROR,
+            "reference_id": "ref-123",
             "extraction": {
                 "first_name": "Jane",
                 "last_name": None,
@@ -19,7 +22,8 @@ def test_format_http_exception_content_includes_extraction() -> None:
         }
     )
     assert content == {
-        "error": "Could not extract all required patient fields from document",
+        "error": GENERIC_UPLOAD_ERROR,
+        "reference_id": "ref-123",
         "extraction": {
             "first_name": "Jane",
             "last_name": None,
@@ -66,7 +70,8 @@ def test_http_exception_with_extraction_returns_extraction_field(client: TestCli
 
     assert response.status_code == 422
     body = response.json()
-    assert body["error"] == "Could not extract all required patient fields from document"
+    assert body["error"] == GENERIC_UPLOAD_ERROR
+    assert body["reference_id"]
     assert body["extraction"] == {
         "first_name": "Jane",
         "last_name": None,

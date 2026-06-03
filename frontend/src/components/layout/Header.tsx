@@ -1,13 +1,18 @@
 import { NavLink } from "react-router-dom";
 
+import { cn } from "@/lib/utils";
+
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-  isActive ? "font-semibold text-blue-600" : "text-gray-600 hover:text-gray-900";
+  cn(
+    "text-sm font-medium transition-colors hover:text-foreground",
+    isActive ? "text-primary" : "text-muted-foreground",
+  );
 
 export default function Header() {
   return (
-    <header className="border-b border-gray-200 bg-white">
-      <div className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-4">
-        <span className="text-lg font-semibold text-gray-900">GenHealth</span>
+    <header className="border-b border-border bg-background">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:gap-6 md:px-6">
+        <span className="text-lg font-semibold text-foreground">GenHealth</span>
         <nav className="flex gap-4">
           <NavLink to="/" className={navLinkClass} end>
             Orders

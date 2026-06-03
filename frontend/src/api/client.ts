@@ -15,11 +15,56 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    return Promise.reject(new Error(getApiErrorMessage(error)));
+    const message = getApiErrorMessage(error);
+    const isNetworkError =
+      isAxiosError(error) &&
+      (!error.response ||
+        error.code === "ERR_NETWORK" ||
+        error.message === "Network Error");
+
+    return Promise.reject(
+      new ApiError(
+        message,
+        isNetworkError,
+        error.response?.data,
+        error.response?.status,
+      ),
+    );
   },
 );
 
+export class ApiError extends Error {
+  readonly isNetworkError: boolean;
+  readonly responseData: unknown;
+  readonly statusCode: number | undefined;
+
+  constructor(
+    message: string,
+    isNetworkError = false,
+    responseData: unknown = undefined,
+    statusCode: number | undefined = undefined,
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.isNetworkError = isNetworkError;
+    this.responseData = responseData;
+    this.statusCode = statusCode;
+  }
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
+export function isNetworkError(error: unknown): boolean {
+  return isApiError(error) && error.isNetworkError;
+}
+
 export function getApiErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    return error.message;
+  }
+
   if (isAxiosError(error)) {
     const apiError = error.response?.data?.error;
     if (typeof apiError === "string" && apiError.length > 0) {

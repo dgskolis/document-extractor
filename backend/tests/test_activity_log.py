@@ -15,15 +15,22 @@ from app.services import activity_log_service
 from starlette.requests import Request
 
 
-def _wait_for_logs(db_session: Session, minimum_count: int, timeout_seconds: float = 1.0) -> None:
+def _wait_for_logs(
+    db_session: Session,
+    minimum_count: int,
+    timeout_seconds: float = 1.0,
+    *,
+    baseline_count: int = 0,
+) -> None:
+    target_count = baseline_count + minimum_count
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         db_session.rollback()
         count = db_session.scalar(select(func.count()).select_from(ActivityLog)) or 0
-        if count >= minimum_count:
+        if count >= target_count:
             return
         time.sleep(0.01)
-    pytest.fail(f"Expected at least {minimum_count} activity logs within {timeout_seconds}s")
+    pytest.fail(f"Expected at least {target_count} activity logs within {timeout_seconds}s")
 
 
 def test_middleware_persists_activity_log(client: TestClient, db_session: Session) -> None:
@@ -64,10 +71,12 @@ def test_resolve_ip_address_prefers_x_forwarded_for() -> None:
 
 
 def test_list_activity_logs_endpoint(client: TestClient, db_session: Session) -> None:
+    db_session.rollback()
+    baseline_count = db_session.scalar(select(func.count()).select_from(ActivityLog)) or 0
     client.get("/health")
     client.get("/health/ready")
     client.get("/api/v1/orders/", params={"limit": 2, "offset": 1})
-    _wait_for_logs(db_session, 3)
+    _wait_for_logs(db_session, 3, baseline_count=baseline_count)
 
     response = client.get("/api/v1/logs/")
     assert response.status_code == 200

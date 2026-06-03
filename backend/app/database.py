@@ -99,6 +99,8 @@ def run_migrations() -> None:
 
     alembic_cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    # Avoid Alembic's fileConfig disabling uvicorn/app loggers during app startup.
+    alembic_cfg.attributes["configure_logger"] = False
 
     with engine.connect() as conn:
         context = MigrationContext.configure(conn)

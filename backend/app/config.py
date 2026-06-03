@@ -17,6 +17,8 @@ DEFAULT_MAX_UPLOAD_SIZE_BYTES = 25 * 1024 * 1024
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 60.0
 DEFAULT_ACTIVITY_LOG_MAX_ENTRIES = 10_000
 DEFAULT_MAX_DOCUMENT_TEXT_CHARS = 100_000
+DEFAULT_OCR_DPI = 300
+DEFAULT_TESSERACT_LANG = "eng"
 READ_CHUNK_SIZE_BYTES = 1024 * 1024
 
 
@@ -31,6 +33,9 @@ class Settings(BaseModel):
     openai_timeout_seconds: float = Field(default=DEFAULT_OPENAI_TIMEOUT_SECONDS, gt=0)
     activity_log_max_entries: int = Field(default=DEFAULT_ACTIVITY_LOG_MAX_ENTRIES, gt=0)
     max_document_text_chars: int = Field(default=DEFAULT_MAX_DOCUMENT_TEXT_CHARS, gt=0)
+    tesseract_cmd: str | None = Field(default=None)
+    tesseract_lang: str = Field(default=DEFAULT_TESSERACT_LANG)
+    ocr_dpi: int = Field(default=DEFAULT_OCR_DPI, gt=0)
 
     @field_validator("database_url")
     @classmethod
@@ -83,6 +88,9 @@ def get_settings() -> Settings:
             "MAX_DOCUMENT_TEXT_CHARS",
             DEFAULT_MAX_DOCUMENT_TEXT_CHARS,
         ),
+        tesseract_cmd=_strip_optional_env("TESSERACT_CMD"),
+        tesseract_lang=os.getenv("TESSERACT_LANG", DEFAULT_TESSERACT_LANG),
+        ocr_dpi=_parse_int_env("OCR_DPI", DEFAULT_OCR_DPI),
     )
 
 

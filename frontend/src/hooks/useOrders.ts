@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { isNetworkError } from "@/api/client";
 import {
   createOrder,
   deleteOrder,
@@ -44,6 +45,8 @@ export function useOrders() {
     orders: query.data ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
+    isUnreachable: query.isError && isNetworkError(query.error),
+    refetch: query.refetch,
     createOrder: createMutation.mutateAsync,
     isCreating: createMutation.isPending,
     updateOrder: (id: string, input: OrderUpdateInput) =>

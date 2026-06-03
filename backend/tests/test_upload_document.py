@@ -14,7 +14,14 @@ from app.exceptions import (
 )
 from app.models.order import Order
 from app.schemas.document import ExtractedPatientFields
+from app.schemas.upload_errors import GENERIC_UPLOAD_ERROR
 from app.services import document_service
+
+
+def _assert_generic_upload_error(body: dict) -> None:
+    assert body["error"] == GENERIC_UPLOAD_ERROR
+    assert "reference_id" in body
+    assert body["reference_id"]
 
 
 def _upload_file(
@@ -53,10 +60,29 @@ def test_upload_document_success(
         "last_name": "Doe",
         "date_of_birth": "1990-05-15",
     }
-    assert data["order"]["patient_first_name"] == "Jane"
-    assert data["order"]["patient_last_name"] == "Doe"
-    assert data["order"]["date_of_birth"] == "1990-05-15"
-    assert data["order"]["status"] == "pending"
+    assert "order" not in data
+
+
+@patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
+@patch("app.routes.orders.document_service.extract_text")
+def test_upload_document_success_does_not_create_order(
+    mock_extract_text,
+    mock_extract_patient_fields,
+    client: TestClient,
+    db_session,
+) -> None:
+    mock_extract_text.return_value = "Patient: Jane Doe, DOB 1990-05-15"
+    mock_extract_patient_fields.return_value = ExtractedPatientFields(
+        first_name="Jane",
+        last_name="Doe",
+        date_of_birth=date(1990, 5, 15),
+    )
+
+    response = _upload_file(client)
+
+    assert response.status_code == 201
+    order_count = db_session.scalar(select(func.count()).select_from(Order))
+    assert order_count == 0
 
 
 @patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
@@ -78,7 +104,7 @@ def test_upload_document_partial_extraction(
 
     assert response.status_code == 422
     body = response.json()
-    assert body["error"] == "Could not extract all required patient fields from document"
+    _assert_generic_upload_error(body)
     assert body["extraction"] == {
         "first_name": "Jane",
         "last_name": None,
@@ -107,7 +133,7 @@ def test_upload_document_name_too_long(
     response = _upload_file(client)
 
     assert response.status_code == 422
-    assert response.json()["error"] == "Could not extract all required patient fields from document"
+    _assert_generic_upload_error(response.json())
     order_count = db_session.scalar(select(func.count()).select_from(Order))
     assert order_count == 0
 
@@ -130,7 +156,7 @@ def test_upload_document_whitespace_only_names(
     response = _upload_file(client)
 
     assert response.status_code == 422
-    assert response.json()["error"] == "Could not extract all required patient fields from document"
+    _assert_generic_upload_error(response.json())
     order_count = db_session.scalar(select(func.count()).select_from(Order))
     assert order_count == 0
 
@@ -143,7 +169,7 @@ def test_upload_document_unsupported_media_type(client: TestClient) -> None:
     )
 
     assert response.status_code == 415
-    assert response.json()["error"] == "Unsupported file type"
+    _assert_generic_upload_error(response.json())
 
 
 @patch("app.routes.orders.document_service.extract_text")
@@ -153,7 +179,7 @@ def test_upload_document_empty_text_extraction(mock_extract_text, client: TestCl
     response = _upload_file(client)
 
     assert response.status_code == 422
-    assert response.json()["error"] == "Unable to extract text from document"
+    _assert_generic_upload_error(response.json())
 
 
 @patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
@@ -169,7 +195,7 @@ def test_upload_document_llm_failure(
     response = _upload_file(client)
 
     assert response.status_code == 502
-    assert response.json()["error"] == "Patient field extraction failed"
+    _assert_generic_upload_error(response.json())
 
 
 @patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
@@ -187,7 +213,7 @@ def test_upload_document_missing_openai_key(
     response = _upload_file(client)
 
     assert response.status_code == 503
-    assert response.json()["error"] == "OpenAI API key not configured"
+    _assert_generic_upload_error(response.json())
 
 
 @patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
@@ -207,7 +233,8 @@ def test_upload_document_route_not_treated_as_order_id(
     response = _upload_file(client)
 
     assert response.status_code == 201
-    assert "order" in response.json()
+    assert "extraction" in response.json()
+    assert "order" not in response.json()
 
 
 @patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
@@ -228,7 +255,7 @@ def test_upload_document_future_dob_treated_as_partial(
     response = _upload_file(client)
 
     assert response.status_code == 422
-    assert response.json()["error"] == "Could not extract all required patient fields from document"
+    _assert_generic_upload_error(response.json())
     order_count = db_session.scalar(select(func.count()).select_from(Order))
     assert order_count == 0
 
@@ -242,6 +269,7 @@ def test_upload_document_file_too_large(mock_read_upload_content, client: TestCl
     response = _upload_file(client)
 
     assert response.status_code == 413
+    _assert_generic_upload_error(response.json())
 
 
 def test_upload_document_requires_file(client: TestClient) -> None:
@@ -331,3 +359,33 @@ def test_extract_patient_fields_truncates_long_document_text(mock_build_llm) -> 
     sent_text = mock_structured.invoke.call_args[0][0][1].content
     assert len(sent_text) == 100
     assert sent_text == "x" * 100
+
+
+@patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
+@patch("app.routes.orders.document_service.extract_text")
+def test_upload_document_partial_extraction_logs_without_pii(
+    mock_extract_text,
+    mock_extract_patient_fields,
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    caplog.set_level(logging.WARNING)
+    mock_extract_text.return_value = "Patient: Jane, DOB 1990-05-15"
+    mock_extract_patient_fields.return_value = ExtractedPatientFields(
+        first_name="Jane",
+        last_name=None,
+        date_of_birth=date(1990, 5, 15),
+    )
+
+    response = _upload_file(client)
+
+    assert response.status_code == 422
+    body = response.json()
+    _assert_generic_upload_error(body)
+    assert "reference_id" in body
+    assert "Jane" not in caplog.text
+    assert "1990-05-15" not in caplog.text
+    assert body["reference_id"] in caplog.text
+    assert "partial_extraction" in caplog.text

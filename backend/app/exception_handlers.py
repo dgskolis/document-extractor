@@ -23,6 +23,8 @@ def format_http_exception_content(detail: Any) -> dict[str, Any]:
         message = detail.get("message")
         if isinstance(message, str):
             content: dict[str, Any] = {"error": message}
+            if "reference_id" in detail:
+                content["reference_id"] = detail["reference_id"]
             if "extraction" in detail:
                 content["extraction"] = detail["extraction"]
             return content

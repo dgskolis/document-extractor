@@ -12,17 +12,22 @@ def get_order(db: Session, order_id: uuid.UUID) -> Order | None:
 
 
 def list_orders(db: Session, *, limit: int, offset: int) -> tuple[list[Order], int]:
-    total = db.scalar(select(func.count()).select_from(Order)) or 0
+    listed_orders_filter = Order.status != OrderStatus.PENDING.value
+    total = db.scalar(select(func.count()).select_from(Order).where(listed_orders_filter)) or 0
     orders = list(
         db.scalars(
-            select(Order).order_by(Order.created_at.desc()).limit(limit).offset(offset)
+            select(Order)
+            .where(listed_orders_filter)
+            .order_by(Order.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
     )
     return orders, total
 
 
 def create_order(db: Session, order_in: OrderCreate) -> Order:
-    order = Order(**order_in.model_dump(), status=OrderStatus.PENDING.value)
+    order = Order(**order_in.model_dump(), status=OrderStatus.IN_PROGRESS.value)
     db.add(order)
     db.commit()
     db.refresh(order)

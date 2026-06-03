@@ -30,6 +30,8 @@ uvicorn app.main:app --reload
 
 The API is available at `http://127.0.0.1:8000`. OpenAPI docs at `/docs`.
 
+**OCR for scanned PDFs:** Install the Tesseract binary locally before using document upload on image-only PDFs. On macOS: `brew install tesseract`. If Tesseract is not on your `PATH`, set `TESSERACT_CMD` in `.env`. On Railway, `nixpacks.toml` installs Tesseract automatically during deploy.
+
 ## Environment variables
 
 | Variable | Required | Default | Description |
@@ -41,6 +43,9 @@ The API is available at `http://127.0.0.1:8000`. OpenAPI docs at `/docs`.
 | `OPENAI_TIMEOUT_SECONDS` | No | `60` | Timeout for LLM requests (seconds) |
 | `MAX_UPLOAD_SIZE_BYTES` | No | `26214400` | Max upload size for document endpoint (25 MB) |
 | `MAX_DOCUMENT_TEXT_CHARS` | No | `100000` | Max characters of extracted document text sent to the LLM |
+| `TESSERACT_CMD` | No | — | Path to the Tesseract binary when it is not on `PATH` |
+| `TESSERACT_LANG` | No | `eng` | Tesseract language code(s) for OCR fallback |
+| `OCR_DPI` | No | `300` | Render DPI used when OCR runs on scanned PDF pages |
 | `ACTIVITY_LOG_MAX_ENTRIES` | No | `10000` | Max activity log rows kept (oldest pruned on startup) |
 | `APP_NAME` | No | `GenHealth API` | FastAPI application title |
 | `DEBUG` | No | `false` | Enable debug mode |

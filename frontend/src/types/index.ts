@@ -9,6 +9,12 @@ export interface Order {
   created_at: string;
 }
 
+export interface OrderCreateInput {
+  patient_first_name: string;
+  patient_last_name: string;
+  date_of_birth: string;
+}
+
 export interface ExtractedPatient {
   patient_first_name: string;
   patient_last_name: string;

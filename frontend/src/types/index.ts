@@ -15,6 +15,13 @@ export interface OrderCreateInput {
   date_of_birth: string;
 }
 
+export interface OrderUpdateInput {
+  patient_first_name?: string;
+  patient_last_name?: string;
+  date_of_birth?: string;
+  status?: OrderStatus;
+}
+
 export interface ExtractedPatient {
   patient_first_name: string;
   patient_last_name: string;

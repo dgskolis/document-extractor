@@ -1,10 +1,12 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
+import { toast } from "sonner";
 
 import { uploadDocument } from "@/api/orders";
+import { ORDERS_QUERY_KEY } from "@/hooks/useOrders";
 import type { ExtractedPatient } from "@/types";
 
 const PDF_MIME = "application/pdf";
-const PROGRESS_DURATION_MS = 2000;
 
 function isPdfFile(file: File): boolean {
   return (
@@ -13,11 +15,20 @@ function isPdfFile(file: File): boolean {
 }
 
 export function useUpload() {
+  const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [extractedPatient, setExtractedPatient] =
     useState<ExtractedPatient | null>(null);
-  const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
+
+  const uploadMutation = useMutation({
+    mutationFn: uploadDocument,
+    onSuccess: async (result) => {
+      setProgress(100);
+      setExtractedPatient(result);
+      await queryClient.invalidateQueries({ queryKey: ORDERS_QUERY_KEY });
+    },
+  });
 
   const selectFile = useCallback((selectedFile: File | null): boolean => {
     if (!selectedFile) {
@@ -44,38 +55,36 @@ export function useUpload() {
   }, []);
 
   const processDocument = useCallback(async () => {
-    if (!file || processing) {
+    if (!file || uploadMutation.isPending) {
       return;
     }
 
-    setProcessing(true);
     setProgress(0);
     setExtractedPatient(null);
 
     const startTime = Date.now();
     const progressInterval = window.setInterval(() => {
       const elapsed = Date.now() - startTime;
-      const nextProgress = Math.min(
-        100,
-        Math.round((elapsed / PROGRESS_DURATION_MS) * 100),
-      );
+      const nextProgress = Math.min(95, Math.round(elapsed / 20));
       setProgress(nextProgress);
     }, 50);
 
     try {
-      const result = await uploadDocument(file);
-      setProgress(100);
-      setExtractedPatient(result);
+      await uploadMutation.mutateAsync(file);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to process document";
+      toast.error(message);
+      setProgress(0);
     } finally {
       window.clearInterval(progressInterval);
-      setProcessing(false);
     }
-  }, [file, processing]);
+  }, [file, uploadMutation]);
 
   return {
     file,
     extractedPatient,
-    processing,
+    processing: uploadMutation.isPending,
     progress,
     selectFile,
     clearFile,

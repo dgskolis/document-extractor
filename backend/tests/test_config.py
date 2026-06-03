@@ -31,6 +31,12 @@ def test_settings_openai_values() -> None:
     assert settings.openai_model == "gpt-4o"
 
 
+def test_settings_upload_and_timeout_defaults() -> None:
+    settings = Settings(database_url="sqlite:///./genhealth.db")
+    assert settings.max_upload_size_bytes == 25 * 1024 * 1024
+    assert settings.openai_timeout_seconds == 60.0
+
+
 def test_settings_debug_parsing() -> None:
     assert Settings(debug=True).debug is True
     settings = Settings.model_validate({"debug": False, "database_url": "sqlite:///./genhealth.db"})

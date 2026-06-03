@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_order_or_404
 from app.exceptions import (
+    FileTooLargeError,
     OpenAIConfigurationError,
     PatientExtractionError,
     TextExtractionError,
@@ -12,8 +13,9 @@ from app.exceptions import (
 from app.models.order import Order
 from app.schemas.document import (
     DocumentUploadResponse,
+    build_order_create_from_extraction,
     build_partial_extraction_detail,
-    is_extraction_complete,
+    build_text_extraction_error_detail,
 )
 from app.schemas.order import OrderCreate, OrderListResponse, OrderResponse, OrderUpdate
 from app.services import document_service, order_service, patient_extraction_service
@@ -48,7 +50,13 @@ def upload_document(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> DocumentUploadResponse:
-    content = file.file.read()
+    try:
+        content = document_service.read_upload_content(file)
+    except FileTooLargeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=str(exc),
+        ) from exc
 
     try:
         document_text = document_service.extract_text(
@@ -64,7 +72,7 @@ def upload_document(
     except TextExtractionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Unable to extract text from document",
+            detail=build_text_extraction_error_detail(),
         ) from exc
 
     try:
@@ -80,21 +88,13 @@ def upload_document(
             detail="Patient field extraction failed",
         ) from exc
 
-    if not is_extraction_complete(extracted_fields):
+    order_in = build_order_create_from_extraction(extracted_fields)
+    if order_in is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=build_partial_extraction_detail(extracted_fields),
         )
 
-    assert extracted_fields.first_name is not None
-    assert extracted_fields.last_name is not None
-    assert extracted_fields.date_of_birth is not None
-
-    order_in = OrderCreate(
-        patient_first_name=extracted_fields.first_name,
-        patient_last_name=extracted_fields.last_name,
-        date_of_birth=extracted_fields.date_of_birth,
-    )
     order = order_service.create_order(db, order_in)
     return DocumentUploadResponse(extraction=extracted_fields, order=order)
 

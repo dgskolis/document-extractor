@@ -24,22 +24,28 @@ class _RawExtractedPatientFields(BaseModel):
 
     first_name: str | None = None
     last_name: str | None = None
-    date_of_birth: date | None = None
+    date_of_birth: str | None = None
+
+
+def _parse_date_of_birth(value: str | None) -> date | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    try:
+        parsed = date.fromisoformat(stripped)
+        return validate_date_of_birth(parsed)
+    except ValueError:
+        return None
 
 
 def _normalize_extracted_fields(raw: _RawExtractedPatientFields) -> ExtractedPatientFields:
-    date_of_birth = raw.date_of_birth
-    if date_of_birth is not None:
-        try:
-            date_of_birth = validate_date_of_birth(date_of_birth)
-        except ValueError:
-            date_of_birth = None
-
     try:
         return ExtractedPatientFields(
             first_name=raw.first_name,
             last_name=raw.last_name,
-            date_of_birth=date_of_birth,
+            date_of_birth=_parse_date_of_birth(raw.date_of_birth),
         )
     except ValidationError as exc:
         logger.warning("Extracted patient fields failed validation", exc_info=exc)
@@ -47,13 +53,15 @@ def _normalize_extracted_fields(raw: _RawExtractedPatientFields) -> ExtractedPat
 
 
 def _build_llm() -> ChatOpenAI:
-    if not settings.openai_api_key:
+    api_key = (settings.openai_api_key or "").strip()
+    if not api_key:
         raise OpenAIConfigurationError("OpenAI API key not configured")
 
     return ChatOpenAI(
-        api_key=settings.openai_api_key,
+        api_key=api_key,
         model=settings.openai_model,
         temperature=0,
+        timeout=settings.openai_timeout_seconds,
     )
 
 

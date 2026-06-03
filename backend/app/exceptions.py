@@ -2,6 +2,10 @@ class UnsupportedMediaTypeError(Exception):
     """Raised when an uploaded file has an unsupported content type."""
 
 
+class FileTooLargeError(Exception):
+    """Raised when an uploaded file exceeds the configured size limit."""
+
+
 class TextExtractionError(Exception):
     """Raised when text cannot be extracted from a document."""
 

@@ -13,7 +13,7 @@ def test_create_order(client: TestClient, sample_order_payload: dict[str, str]) 
     assert data["patient_first_name"] == "Jane"
     assert data["patient_last_name"] == "Doe"
     assert data["date_of_birth"] == "1990-05-15"
-    assert data["status"] == "in_progress"
+    assert data["status"] == "completed"
     assert uuid.UUID(data["id"])
     assert "created_at" in data
     assert "updated_at" in data
@@ -55,7 +55,7 @@ def test_list_orders_excludes_pending(client: TestClient, db_session, sample_ord
     assert data["total"] == 1
     assert len(data["items"]) == 1
     assert data["items"][0]["id"] == created_order_id
-    assert data["items"][0]["status"] == "in_progress"
+    assert data["items"][0]["status"] == "completed"
 
 
 def test_list_orders(client: TestClient, sample_order_payload: dict[str, str]) -> None:

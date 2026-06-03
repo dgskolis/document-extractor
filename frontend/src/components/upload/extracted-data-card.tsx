@@ -40,7 +40,7 @@ export function ExtractedDataCard({ data, onPrefill }: ExtractedDataCardProps) {
       </CardContent>
       <CardFooter>
         <Button type="button" onClick={() => onPrefill(data)}>
-          Create Order with this Data
+          Fill Order with this Data
         </Button>
       </CardFooter>
     </Card>

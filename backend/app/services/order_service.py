@@ -27,7 +27,7 @@ def list_orders(db: Session, *, limit: int, offset: int) -> tuple[list[Order], i
 
 
 def create_order(db: Session, order_in: OrderCreate) -> Order:
-    order = Order(**order_in.model_dump(), status=OrderStatus.IN_PROGRESS.value)
+    order = Order(**order_in.model_dump(), status=OrderStatus.COMPLETED.value)
     db.add(order)
     db.commit()
     db.refresh(order)

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_order_or_404
+from app.dependencies import get_order_or_404, verify_api_key
 from app.exceptions import (
     FileTooLargeError,
     OpenAIConfigurationError,
@@ -20,7 +20,11 @@ from app.schemas.document import (
 from app.schemas.order import OrderCreate, OrderListResponse, OrderResponse, OrderUpdate
 from app.services import document_service, order_service, patient_extraction_service
 
-router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
+router = APIRouter(
+    prefix="/api/v1/orders",
+    tags=["orders"],
+    dependencies=[Depends(verify_api_key)],
+)
 
 DEFAULT_LIST_LIMIT = 100
 MAX_LIST_LIMIT = 1000
@@ -34,8 +38,8 @@ def create_order(order_in: OrderCreate, db: Session = Depends(get_db)) -> OrderR
 @router.get("/", response_model=OrderListResponse)
 def list_orders(
     db: Session = Depends(get_db),
-    limit: int = Query(default=DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
-    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT, description="Page size"),
+    offset: int = Query(default=0, ge=0, description="Number of records to skip"),
 ) -> OrderListResponse:
     orders, total = order_service.list_orders(db, limit=limit, offset=offset)
     return OrderListResponse(items=orders, total=total, limit=limit, offset=offset)

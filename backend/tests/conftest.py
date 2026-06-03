@@ -5,10 +5,13 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from unittest.mock import patch
 
+from app.config import settings
 from app.database import Base, get_db
 from app.main import app
 from app.models.activity_log import ActivityLog  # noqa: F401
 from app.models.order import Order  # noqa: F401
+
+TEST_API_KEY = "test-api-key"
 
 
 @pytest.fixture
@@ -48,13 +51,15 @@ def client(db_engine) -> TestClient:
 
     app.dependency_overrides[get_db] = override_get_db
     with patch("app.main.check_connection"), patch("app.main.run_migrations"), patch(
+        "app.main.validate_settings",
+    ), patch(
         "app.middleware.activity_log.SessionLocal",
         session_factory,
     ), patch(
         "app.main.activity_log_service.prune_activity_logs",
         return_value=0,
-    ):
-        with TestClient(app) as test_client:
+    ), patch.object(settings, "api_key", TEST_API_KEY):
+        with TestClient(app, headers={"X-API-Key": TEST_API_KEY}) as test_client:
             yield test_client
     app.dependency_overrides.clear()
 

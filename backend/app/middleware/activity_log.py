@@ -18,6 +18,12 @@ INTERNAL_SERVER_ERROR_STATUS = 500
 
 
 def _resolve_ip_address(request: Request) -> str:
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+        if client_ip:
+            return client_ip[:45]
+
     if request.client and request.client.host:
         return request.client.host
     return UNKNOWN_IP

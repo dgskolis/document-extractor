@@ -9,13 +9,14 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 _ENV_PATH = BACKEND_DIR / ".env"
 load_dotenv(_ENV_PATH)
 
-DEFAULT_DATABASE_URL = "sqlite:///./genhealth.db"
+DEFAULT_DATABASE_URL = "sqlite:////tmp/orders.db"
 
 
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_MAX_UPLOAD_SIZE_BYTES = 25 * 1024 * 1024
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 60.0
 DEFAULT_ACTIVITY_LOG_MAX_ENTRIES = 10_000
+DEFAULT_MAX_DOCUMENT_TEXT_CHARS = 100_000
 READ_CHUNK_SIZE_BYTES = 1024 * 1024
 
 
@@ -23,11 +24,13 @@ class Settings(BaseModel):
     app_name: str = Field(default="GenHealth API")
     debug: bool = Field(default=False)
     database_url: str = Field(default=DEFAULT_DATABASE_URL)
+    api_key: str | None = Field(default=None)
     openai_api_key: str | None = Field(default=None)
     openai_model: str = Field(default=DEFAULT_OPENAI_MODEL)
     max_upload_size_bytes: int = Field(default=DEFAULT_MAX_UPLOAD_SIZE_BYTES, gt=0)
     openai_timeout_seconds: float = Field(default=DEFAULT_OPENAI_TIMEOUT_SECONDS, gt=0)
     activity_log_max_entries: int = Field(default=DEFAULT_ACTIVITY_LOG_MAX_ENTRIES, gt=0)
+    max_document_text_chars: int = Field(default=DEFAULT_MAX_DOCUMENT_TEXT_CHARS, gt=0)
 
     @field_validator("database_url")
     @classmethod
@@ -37,24 +40,55 @@ class Settings(BaseModel):
         return value
 
 
+def _strip_optional_env(name: str) -> str | None:
+    value = os.getenv(name)
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _parse_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name, str(default))
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {raw!r}") from exc
+
+
+def _parse_float_env(name: str, default: float) -> float:
+    raw = os.getenv(name, str(default))
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number, got {raw!r}") from exc
+
+
 @lru_cache
 def get_settings() -> Settings:
-    max_upload_size = os.getenv("MAX_UPLOAD_SIZE_BYTES", str(DEFAULT_MAX_UPLOAD_SIZE_BYTES))
-    openai_timeout = os.getenv("OPENAI_TIMEOUT_SECONDS", str(DEFAULT_OPENAI_TIMEOUT_SECONDS))
-    activity_log_max_entries = os.getenv(
-        "ACTIVITY_LOG_MAX_ENTRIES",
-        str(DEFAULT_ACTIVITY_LOG_MAX_ENTRIES),
-    )
     return Settings(
         app_name=os.getenv("APP_NAME", "GenHealth API"),
         debug=os.getenv("DEBUG", "false").lower() in {"1", "true", "yes"},
         database_url=os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL),
-        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        api_key=_strip_optional_env("API_KEY"),
+        openai_api_key=_strip_optional_env("OPENAI_API_KEY"),
         openai_model=os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
-        max_upload_size_bytes=int(max_upload_size),
-        openai_timeout_seconds=float(openai_timeout),
-        activity_log_max_entries=int(activity_log_max_entries),
+        max_upload_size_bytes=_parse_int_env("MAX_UPLOAD_SIZE_BYTES", DEFAULT_MAX_UPLOAD_SIZE_BYTES),
+        openai_timeout_seconds=_parse_float_env("OPENAI_TIMEOUT_SECONDS", DEFAULT_OPENAI_TIMEOUT_SECONDS),
+        activity_log_max_entries=_parse_int_env(
+            "ACTIVITY_LOG_MAX_ENTRIES",
+            DEFAULT_ACTIVITY_LOG_MAX_ENTRIES,
+        ),
+        max_document_text_chars=_parse_int_env(
+            "MAX_DOCUMENT_TEXT_CHARS",
+            DEFAULT_MAX_DOCUMENT_TEXT_CHARS,
+        ),
     )
 
 
 settings = get_settings()
+
+
+def validate_settings() -> None:
+    if not settings.api_key:
+        raise RuntimeError("API_KEY environment variable is required")

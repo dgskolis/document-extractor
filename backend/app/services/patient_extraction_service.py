@@ -40,6 +40,17 @@ def _parse_date_of_birth(value: str | None) -> date | None:
         return None
 
 
+def _truncate_document_text(document_text: str) -> str:
+    max_chars = settings.max_document_text_chars
+    if len(document_text) <= max_chars:
+        return document_text
+    logger.info(
+        "Truncating document text for LLM extraction",
+        extra={"original_length": len(document_text), "max_chars": max_chars},
+    )
+    return document_text[:max_chars]
+
+
 def _normalize_extracted_fields(raw: _RawExtractedPatientFields) -> ExtractedPatientFields:
     try:
         return ExtractedPatientFields(
@@ -67,9 +78,10 @@ def _build_llm() -> ChatOpenAI:
 
 def extract_patient_fields(document_text: str) -> ExtractedPatientFields:
     llm = _build_llm().with_structured_output(_RawExtractedPatientFields)
+    truncated_text = _truncate_document_text(document_text)
     messages = [
         SystemMessage(content=EXTRACTION_SYSTEM_PROMPT),
-        HumanMessage(content=document_text),
+        HumanMessage(content=truncated_text),
     ]
 
     try:

@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.middleware.activity_log import ActivityLogMiddleware
+from app.middleware.activity_log import ActivityLogMiddleware, _resolve_ip_address
 from app.models.activity_log import ActivityLog
 from app.models.order import utc_now
 from app.services import activity_log_service
@@ -18,6 +18,7 @@ from starlette.requests import Request
 def _wait_for_logs(db_session: Session, minimum_count: int, timeout_seconds: float = 1.0) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
+        db_session.rollback()
         count = db_session.scalar(select(func.count()).select_from(ActivityLog)) or 0
         if count >= minimum_count:
             return
@@ -39,17 +40,41 @@ def test_middleware_persists_activity_log(client: TestClient, db_session: Sessio
     assert log.response_time_ms >= 0
 
 
+def test_middleware_uses_x_forwarded_for_client_ip(client: TestClient, db_session: Session) -> None:
+    response = client.get("/health", headers={"X-Forwarded-For": "203.0.113.50, 10.0.0.1"})
+    assert response.status_code == 200
+
+    _wait_for_logs(db_session, 1)
+    log = db_session.scalar(select(ActivityLog).order_by(ActivityLog.timestamp.desc()))
+    assert log is not None
+    assert log.ip_address == "203.0.113.50"
+
+
+def test_resolve_ip_address_prefers_x_forwarded_for() -> None:
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/health",
+        "query_string": b"",
+        "headers": [(b"x-forwarded-for", b"203.0.113.50, 10.0.0.1")],
+        "client": ("127.0.0.1", 5000),
+    }
+    request = Request(scope)
+    assert _resolve_ip_address(request) == "203.0.113.50"
+
+
 def test_list_activity_logs_endpoint(client: TestClient, db_session: Session) -> None:
     client.get("/health")
     client.get("/health/ready")
-    _wait_for_logs(db_session, 2)
+    client.get("/api/v1/orders/", params={"limit": 2, "offset": 1})
+    _wait_for_logs(db_session, 3)
 
     response = client.get("/api/v1/logs/")
     assert response.status_code == 200
     data = response.json()
     assert data["limit"] == 100
-    assert data["total"] >= 2
-    assert len(data["items"]) >= 2
+    assert data["total"] >= 3
+    assert len(data["items"]) >= 3
     assert data["items"][0]["timestamp"] >= data["items"][1]["timestamp"]
 
     first_item = data["items"][0]
@@ -59,6 +84,11 @@ def test_list_activity_logs_endpoint(client: TestClient, db_session: Session) ->
     assert isinstance(first_item["status_code"], int)
     assert first_item["ip_address"]
     assert isinstance(first_item["response_time_ms"], float)
+
+    query_log = db_session.scalar(
+        select(ActivityLog).where(ActivityLog.path == "/api/v1/orders/?limit=2&offset=1")
+    )
+    assert query_log is not None
 
 
 def test_list_activity_logs_caps_at_100(db_session: Session) -> None:
@@ -134,21 +164,6 @@ def test_middleware_logs_http_error_status(client: TestClient, db_session: Sessi
     assert log is not None
     assert log.method == "GET"
     assert log.status_code == 404
-
-
-def test_middleware_logs_request_path_with_query(client: TestClient, db_session: Session) -> None:
-    response = client.get("/api/v1/orders/?limit=2&offset=1")
-    assert response.status_code == 200
-
-    _wait_for_logs(db_session, 1)
-    log = db_session.scalar(
-        select(ActivityLog)
-        .where(ActivityLog.path == "/api/v1/orders/?limit=2&offset=1")
-        .order_by(ActivityLog.timestamp.desc())
-    )
-    assert log is not None
-    assert log.method == "GET"
-    assert log.status_code == 200
 
 
 def test_list_activity_logs_endpoint_caps_at_100(client: TestClient, db_session: Session) -> None:

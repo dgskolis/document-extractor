@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 
 class OrderStatus(StrEnum):
@@ -19,11 +19,19 @@ def validate_date_of_birth(value: date) -> date:
 
 
 class OrderCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     patient_first_name: str = Field(min_length=1, max_length=255)
     patient_last_name: str = Field(min_length=1, max_length=255)
     date_of_birth: date
+
+    @field_validator("patient_first_name", "patient_last_name")
+    @classmethod
+    def names_not_empty(cls, value: str, info: ValidationInfo) -> str:
+        if not value:
+            field_name = info.field_name or "name"
+            raise ValueError(f"{field_name} cannot be empty")
+        return value
 
     @field_validator("date_of_birth")
     @classmethod
@@ -32,10 +40,22 @@ class OrderCreate(BaseModel):
 
 
 class OrderUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     patient_first_name: str | None = Field(default=None, min_length=1, max_length=255)
     patient_last_name: str | None = Field(default=None, min_length=1, max_length=255)
     date_of_birth: date | None = None
     status: OrderStatus | None = None
+
+    @field_validator("patient_first_name", "patient_last_name")
+    @classmethod
+    def names_not_empty(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is None:
+            return value
+        if not value:
+            field_name = info.field_name or "name"
+            raise ValueError(f"{field_name} cannot be empty")
+        return value
 
     @model_validator(mode="before")
     @classmethod

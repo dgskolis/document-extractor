@@ -27,7 +27,7 @@ def test_health_readiness_returns_503_when_db_unavailable(client: TestClient) ->
     with patch("app.routes.health.check_connection", side_effect=SQLAlchemyError("locked")):
         response = client.get("/health/ready")
     assert response.status_code == 503
-    assert response.json()["detail"] == "Database unavailable"
+    assert response.json()["error"] == "Database unavailable"
 
 
 def test_health_readiness_returns_503_when_schema_missing(client: TestClient) -> None:
@@ -37,4 +37,4 @@ def test_health_readiness_returns_503_when_schema_missing(client: TestClient) ->
     ):
         response = client.get("/health/ready")
     assert response.status_code == 503
-    assert response.json()["detail"] == "Database unavailable"
+    assert response.json()["error"] == "Database unavailable"

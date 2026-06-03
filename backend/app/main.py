@@ -4,8 +4,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings
+from app.config import settings, validate_settings
 from app.database import SessionLocal, check_connection, run_migrations
+from app.exception_handlers import register_exception_handlers
 from app.middleware.activity_log import ActivityLogMiddleware
 from app.routes import health_router, logs_router, orders_router
 from app.services import activity_log_service
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_settings()
     check_connection()
     run_migrations()
     db = SessionLocal()
@@ -35,6 +37,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=lifespan)
+register_exception_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,

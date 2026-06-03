@@ -77,11 +77,13 @@ def test_upload_document_partial_extraction(
     response = _upload_file(client)
 
     assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert detail["message"] == "Could not extract all required patient fields from document"
-    assert detail["extraction"]["first_name"] == "Jane"
-    assert detail["extraction"]["last_name"] is None
-    assert detail["extraction"]["date_of_birth"] == "1990-05-15"
+    body = response.json()
+    assert body["error"] == "Could not extract all required patient fields from document"
+    assert body["extraction"] == {
+        "first_name": "Jane",
+        "last_name": None,
+        "date_of_birth": "1990-05-15",
+    }
 
     order_count = db_session.scalar(select(func.count()).select_from(Order))
     assert order_count == 0
@@ -105,9 +107,7 @@ def test_upload_document_name_too_long(
     response = _upload_file(client)
 
     assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert detail["message"] == "Could not extract all required patient fields from document"
-    assert detail["extraction"]["first_name"] == "A" * 256
+    assert response.json()["error"] == "Could not extract all required patient fields from document"
     order_count = db_session.scalar(select(func.count()).select_from(Order))
     assert order_count == 0
 
@@ -130,8 +130,7 @@ def test_upload_document_whitespace_only_names(
     response = _upload_file(client)
 
     assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert detail["extraction"]["first_name"] is None
+    assert response.json()["error"] == "Could not extract all required patient fields from document"
     order_count = db_session.scalar(select(func.count()).select_from(Order))
     assert order_count == 0
 
@@ -144,7 +143,7 @@ def test_upload_document_unsupported_media_type(client: TestClient) -> None:
     )
 
     assert response.status_code == 415
-    assert response.json()["detail"] == "Unsupported file type"
+    assert response.json()["error"] == "Unsupported file type"
 
 
 @patch("app.routes.orders.document_service.extract_text")
@@ -154,9 +153,7 @@ def test_upload_document_empty_text_extraction(mock_extract_text, client: TestCl
     response = _upload_file(client)
 
     assert response.status_code == 422
-    assert response.json()["detail"] == {
-        "message": "Unable to extract text from document",
-    }
+    assert response.json()["error"] == "Unable to extract text from document"
 
 
 @patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
@@ -172,7 +169,7 @@ def test_upload_document_llm_failure(
     response = _upload_file(client)
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "Patient field extraction failed"
+    assert response.json()["error"] == "Patient field extraction failed"
 
 
 @patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
@@ -190,7 +187,7 @@ def test_upload_document_missing_openai_key(
     response = _upload_file(client)
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "OpenAI API key not configured"
+    assert response.json()["error"] == "OpenAI API key not configured"
 
 
 @patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
@@ -231,7 +228,7 @@ def test_upload_document_future_dob_treated_as_partial(
     response = _upload_file(client)
 
     assert response.status_code == 422
-    assert response.json()["detail"]["extraction"]["date_of_birth"] is None
+    assert response.json()["error"] == "Could not extract all required patient fields from document"
     order_count = db_session.scalar(select(func.count()).select_from(Order))
     assert order_count == 0
 
@@ -310,3 +307,27 @@ def test_normalize_extracted_fields_strips_names() -> None:
     assert result.first_name == "Jane"
     assert result.last_name == "Doe"
     assert result.date_of_birth == date(1990, 5, 15)
+
+
+@patch("app.services.patient_extraction_service._build_llm")
+def test_extract_patient_fields_truncates_long_document_text(mock_build_llm) -> None:
+    from app.services.patient_extraction_service import (
+        _RawExtractedPatientFields,
+        extract_patient_fields,
+    )
+
+    mock_llm = mock_build_llm.return_value
+    mock_structured = mock_llm.with_structured_output.return_value
+    mock_structured.invoke.return_value = _RawExtractedPatientFields(
+        first_name="Jane",
+        last_name="Doe",
+        date_of_birth="1990-05-15",
+    )
+
+    with patch("app.services.patient_extraction_service.settings") as mock_settings:
+        mock_settings.max_document_text_chars = 100
+        extract_patient_fields("x" * 250)
+
+    sent_text = mock_structured.invoke.call_args[0][0][1].content
+    assert len(sent_text) == 100
+    assert sent_text == "x" * 100

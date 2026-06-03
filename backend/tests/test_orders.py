@@ -79,7 +79,7 @@ def test_get_order_not_found(client: TestClient) -> None:
     order_id = uuid.uuid4()
     response = client.get(f"/api/v1/orders/{order_id}")
     assert response.status_code == 404
-    assert response.json()["detail"] == "Order not found"
+    assert response.json()["error"] == "Order not found"
 
 
 def test_update_order(client: TestClient, sample_order_payload: dict[str, str]) -> None:
@@ -128,7 +128,7 @@ def test_update_order_not_found(client: TestClient) -> None:
         json={"status": "completed"},
     )
     assert response.status_code == 404
-    assert response.json()["detail"] == "Order not found"
+    assert response.json()["error"] == "Order not found"
 
 
 def test_delete_order(client: TestClient, sample_order_payload: dict[str, str]) -> None:
@@ -146,7 +146,7 @@ def test_delete_order_not_found(client: TestClient) -> None:
     order_id = uuid.uuid4()
     response = client.delete(f"/api/v1/orders/{order_id}")
     assert response.status_code == 404
-    assert response.json()["detail"] == "Order not found"
+    assert response.json()["error"] == "Order not found"
 
 
 def test_create_order_validation_error(client: TestClient) -> None:

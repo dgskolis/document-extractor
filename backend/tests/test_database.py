@@ -54,12 +54,13 @@ def test_check_connection_creates_parent_directories(tmp_path: Path) -> None:
     assert db_file.exists()
 
 
-def test_check_schema_ready_passes_when_orders_table_exists(tmp_path: Path) -> None:
+def test_check_schema_ready_passes_when_required_tables_exist(tmp_path: Path) -> None:
     db_file = tmp_path / "schema_test.db"
     db_url = f"sqlite:///{db_file}"
     engine = create_engine(get_sqlalchemy_database_url(db_url), connect_args={"check_same_thread": False})
 
     from app.database import Base
+    from app.models.activity_log import ActivityLog  # noqa: F401
     from app.models.order import Order  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
@@ -74,4 +75,17 @@ def test_check_schema_ready_fails_when_orders_table_missing(tmp_path: Path) -> N
         conn.execute(text("SELECT 1"))
 
     with pytest.raises(RuntimeError, match="Required database tables are missing"):
+        check_schema_ready(db_url)
+
+
+def test_check_schema_ready_fails_when_activity_logs_table_missing(tmp_path: Path) -> None:
+    db_file = tmp_path / "orders_only.db"
+    db_url = f"sqlite:///{db_file}"
+    engine = create_engine(get_sqlalchemy_database_url(db_url), connect_args={"check_same_thread": False})
+
+    from app.models.order import Order
+
+    Order.__table__.create(bind=engine)
+
+    with pytest.raises(RuntimeError, match="activity_logs"):
         check_schema_ready(db_url)

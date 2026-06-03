@@ -35,6 +35,7 @@ def test_settings_upload_and_timeout_defaults() -> None:
     settings = Settings(database_url="sqlite:///./genhealth.db")
     assert settings.max_upload_size_bytes == 25 * 1024 * 1024
     assert settings.openai_timeout_seconds == 60.0
+    assert settings.activity_log_max_entries == 10_000
 
 
 def test_settings_debug_parsing() -> None:

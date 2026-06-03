@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from app.database import Base, get_db
 from app.main import app
+from app.models.activity_log import ActivityLog  # noqa: F401
 from app.models.order import Order  # noqa: F401
 
 
@@ -32,16 +33,27 @@ def db_session(db_engine):
 
 
 @pytest.fixture
-def client(db_session) -> TestClient:
+def client(db_engine) -> TestClient:
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
+
     def override_get_db():
+        session = session_factory()
         try:
-            yield db_session
+            yield session
         except Exception:
-            db_session.rollback()
+            session.rollback()
             raise
+        finally:
+            session.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    with patch("app.main.check_connection"), patch("app.main.run_migrations"):
+    with patch("app.main.check_connection"), patch("app.main.run_migrations"), patch(
+        "app.middleware.activity_log.SessionLocal",
+        session_factory,
+    ), patch(
+        "app.main.activity_log_service.prune_activity_logs",
+        return_value=0,
+    ):
         with TestClient(app) as test_client:
             yield test_client
     app.dependency_overrides.clear()

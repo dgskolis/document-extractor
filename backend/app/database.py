@@ -83,8 +83,11 @@ def check_connection(database_url: str | None = None) -> None:
 def check_schema_ready(database_url: str | None = None) -> None:
     eng = _create_engine(database_url) if database_url else engine
     inspector = inspect(eng)
-    if "orders" not in inspector.get_table_names():
-        raise RuntimeError("Required database tables are missing")
+    required_tables = {"orders", "activity_logs"}
+    missing_tables = required_tables - set(inspector.get_table_names())
+    if missing_tables:
+        missing = ", ".join(sorted(missing_tables))
+        raise RuntimeError(f"Required database tables are missing: {missing}")
 
 
 def _index_exists(inspector, table_name: str, index_name: str) -> bool:

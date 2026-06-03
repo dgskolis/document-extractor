@@ -35,6 +35,8 @@ def sqlite_path_from_url(
 
 def get_sqlalchemy_database_url(database_url: str | None = None) -> str:
     url = database_url or settings.database_url
+    if url.startswith("postgresql://") or url.startswith("postgres://"):
+        return url
     if url.endswith(":memory:"):
         return url
     db_path = sqlite_path_from_url(url)
@@ -66,7 +68,15 @@ def get_db() -> Generator[Session, None, None]:
 
 def check_connection(database_url: str | None = None) -> None:
     eng = _create_engine(database_url) if database_url else engine
-    db_path = sqlite_path_from_url(database_url or settings.database_url)
+    url = database_url or settings.database_url
+
+    if url.startswith("postgresql://") or url.startswith("postgres://"):
+        with eng.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("Database connection confirmed (postgresql)")
+        return
+
+    db_path = sqlite_path_from_url(url)
 
     if db_path != Path(":memory:"):
         db_path.parent.mkdir(parents=True, exist_ok=True)

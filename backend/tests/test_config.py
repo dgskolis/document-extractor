@@ -6,14 +6,24 @@ from app.config import Settings, validate_settings
 from app.schemas.order import OrderStatus
 
 
-def test_settings_rejects_non_sqlite_url() -> None:
-    with pytest.raises(ValidationError, match="sqlite:///"):
-        Settings(database_url="postgres://localhost/db")
+def test_settings_rejects_invalid_url_scheme() -> None:
+    with pytest.raises(ValidationError, match="sqlite://"):
+        Settings(database_url="mysql://localhost/db")
 
 
 def test_settings_accepts_sqlite_url() -> None:
     settings = Settings(database_url="sqlite:////tmp/orders.db")
     assert settings.database_url == "sqlite:////tmp/orders.db"
+
+
+def test_settings_accepts_postgresql_url() -> None:
+    settings = Settings(database_url="postgresql://user:pass@localhost:5432/mydb")
+    assert settings.database_url == "postgresql://user:pass@localhost:5432/mydb"
+
+
+def test_settings_accepts_postgres_url() -> None:
+    settings = Settings(database_url="postgres://user:pass@localhost:5432/mydb")
+    assert settings.database_url == "postgres://user:pass@localhost:5432/mydb"
 
 
 def test_settings_default_database_url() -> None:

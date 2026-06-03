@@ -1,10 +1,19 @@
 import logging
-import sqlite3
+from collections.abc import Generator
 from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import BACKEND_DIR, settings
 
 logger = logging.getLogger(__name__)
+
+
+class Base(DeclarativeBase):
+    pass
 
 
 def sqlite_path_from_url(
@@ -24,19 +33,83 @@ def sqlite_path_from_url(
     return db_path
 
 
-def check_connection(database_url: str | None = None) -> None:
+def get_sqlalchemy_database_url(database_url: str | None = None) -> str:
     url = database_url or settings.database_url
+    if url.endswith(":memory:"):
+        return url
     db_path = sqlite_path_from_url(url)
+    if db_path == Path(":memory:"):
+        return "sqlite:///:memory:"
+    return f"sqlite:///{db_path}"
+
+
+def _create_engine(database_url: str | None = None):
+    url = get_sqlalchemy_database_url(database_url)
+    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+    return create_engine(url, connect_args=connect_args)
+
+
+engine = _create_engine()
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def get_db() -> Generator[Session, None, None]:
+    db = SessionLocal()
+    try:
+        yield db
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def check_connection(database_url: str | None = None) -> None:
+    eng = _create_engine(database_url) if database_url else engine
+    db_path = sqlite_path_from_url(database_url or settings.database_url)
+
+    if db_path != Path(":memory:"):
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with eng.connect() as conn:
+        conn.execute(text("SELECT 1"))
 
     if db_path == Path(":memory:"):
-        with sqlite3.connect(":memory:") as conn:
-            conn.execute("SELECT 1")
         logger.info("Database connection confirmed (in-memory)")
-        return
+    else:
+        logger.info("Database connection confirmed at %s", db_path)
 
-    db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("SELECT 1")
+def check_schema_ready(database_url: str | None = None) -> None:
+    eng = _create_engine(database_url) if database_url else engine
+    inspector = inspect(eng)
+    if "orders" not in inspector.get_table_names():
+        raise RuntimeError("Required database tables are missing")
 
-    logger.info("Database connection confirmed at %s", db_path)
+
+def _index_exists(inspector, table_name: str, index_name: str) -> bool:
+    return any(index["name"] == index_name for index in inspector.get_indexes(table_name))
+
+
+def run_migrations() -> None:
+    from alembic.runtime.migration import MigrationContext
+
+    alembic_cfg = Config(str(BACKEND_DIR / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+
+    with engine.connect() as conn:
+        context = MigrationContext.configure(conn)
+        current_revision = context.get_current_revision()
+
+    if current_revision is None:
+        inspector = inspect(engine)
+        if "orders" in inspector.get_table_names():
+            if _index_exists(inspector, "orders", "ix_orders_created_at"):
+                command.stamp(alembic_cfg, "head")
+                logger.info("Stamped pre-existing database at head")
+                return
+            command.stamp(alembic_cfg, "001")
+            logger.info("Stamped pre-existing database at revision 001")
+
+    command.upgrade(alembic_cfg, "head")
+    logger.info("Database migrations applied")

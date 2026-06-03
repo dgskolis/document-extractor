@@ -5,8 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.database import check_connection
-from app.routes import health_router
+from app.database import check_connection, run_migrations
+from app.routes import health_router, orders_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     check_connection()
+    run_migrations()
     logger.info("Application startup complete")
     yield
 
@@ -30,3 +31,4 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(orders_router)

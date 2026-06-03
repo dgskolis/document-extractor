@@ -1,8 +1,7 @@
-import sqlite3
-
 from fastapi import APIRouter, HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 
-from app.database import check_connection
+from app.database import check_connection, check_schema_ready
 
 router = APIRouter(tags=["health"])
 
@@ -16,6 +15,7 @@ def health_liveness() -> dict[str, str]:
 def health_readiness() -> dict[str, str]:
     try:
         check_connection()
-    except (ValueError, sqlite3.Error) as exc:
+        check_schema_ready()
+    except (ValueError, RuntimeError, SQLAlchemyError) as exc:
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
     return {"status": "ok"}

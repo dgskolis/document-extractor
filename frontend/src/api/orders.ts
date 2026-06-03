@@ -116,7 +116,7 @@ function parseUploadErrorResponse(data: unknown): UploadDocumentError {
 }
 
 export async function getOrders(): Promise<Order[]> {
-  const { data } = await apiClient.get<BackendOrderListResponse>("/api/v1/orders");
+  const { data } = await apiClient.get<BackendOrderListResponse>("/api/v1/orders/");
   return data.items.map(mapOrder);
 }
 
@@ -126,7 +126,7 @@ export async function getOrder(id: string): Promise<Order> {
 }
 
 export async function createOrder(input: OrderCreateInput): Promise<Order> {
-  const { data } = await apiClient.post<BackendOrder>("/api/v1/orders", input);
+  const { data } = await apiClient.post<BackendOrder>("/api/v1/orders/", input);
   return mapOrder(data);
 }
 

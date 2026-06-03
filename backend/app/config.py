@@ -40,8 +40,11 @@ class Settings(BaseModel):
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, value: str) -> str:
-        if not value.startswith("sqlite:///"):
-            raise ValueError("DATABASE_URL must use the sqlite:/// scheme")
+        valid_schemes = ("sqlite://", "postgresql://", "postgres://")
+        if not any(value.startswith(scheme) for scheme in valid_schemes):
+            raise ValueError(
+                "DATABASE_URL must use the sqlite://, postgresql://, or postgres:// scheme"
+            )
         return value
 
 

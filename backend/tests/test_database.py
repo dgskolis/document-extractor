@@ -7,9 +7,12 @@ from sqlalchemy import create_engine, text
 
 from app.config import BACKEND_DIR
 from app.database import (
+    _create_engine,
     check_connection,
     check_schema_ready,
     get_sqlalchemy_database_url,
+    is_postgres_url,
+    is_sqlite_url,
     run_migrations,
     sqlite_path_from_url,
 )
@@ -54,6 +57,30 @@ def test_check_connection_creates_parent_directories(tmp_path: Path) -> None:
     db_file = tmp_path / "nested" / "dir" / "test.db"
     check_connection(f"sqlite:///{db_file}")
     assert db_file.exists()
+
+
+def test_is_sqlite_url() -> None:
+    assert is_sqlite_url("sqlite:////tmp/orders.db")
+    assert not is_sqlite_url("postgresql://localhost/db")
+
+
+def test_is_postgres_url() -> None:
+    assert is_postgres_url("postgresql://localhost/db")
+    assert is_postgres_url("postgres://localhost/db")
+    assert not is_postgres_url("sqlite:////tmp/orders.db")
+
+
+def test_sqlite_engine_enables_wal_and_busy_timeout(tmp_path: Path) -> None:
+    from app.config import settings
+
+    db_file = tmp_path / "wal_test.db"
+    engine = _create_engine(f"sqlite:///{db_file}")
+    with engine.connect() as conn:
+        journal_mode = conn.execute(text("PRAGMA journal_mode")).scalar()
+        busy_timeout = conn.execute(text("PRAGMA busy_timeout")).scalar()
+
+    assert journal_mode == "wal"
+    assert busy_timeout == settings.sqlite_busy_timeout_ms
 
 
 def test_check_schema_ready_passes_when_required_tables_exist(tmp_path: Path) -> None:

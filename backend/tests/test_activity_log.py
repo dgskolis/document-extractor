@@ -76,7 +76,7 @@ def test_list_activity_logs_endpoint(client: TestClient, db_session: Session) ->
     client.get("/health")
     client.get("/health/ready")
     client.get("/api/v1/orders/", params={"limit": 2, "offset": 1})
-    _wait_for_logs(db_session, 3, baseline_count=baseline_count)
+    _wait_for_logs(db_session, 3, timeout_seconds=2.0, baseline_count=baseline_count)
 
     response = client.get("/api/v1/logs/")
     assert response.status_code == 200

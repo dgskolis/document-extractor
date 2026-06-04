@@ -25,6 +25,10 @@ DEFAULT_UPLOAD_MAX_WORKERS = 2
 DEFAULT_OPENAI_MAX_RETRIES = 3
 DEFAULT_OPENAI_RETRY_MIN_SECONDS = 1.0
 DEFAULT_OPENAI_RETRY_MAX_SECONDS = 8.0
+DEFAULT_DB_COMMIT_MAX_RETRIES = 5
+DEFAULT_DB_COMMIT_RETRY_MIN_SECONDS = 0.05
+DEFAULT_DB_COMMIT_RETRY_MAX_SECONDS = 0.5
+DEFAULT_SQLITE_BUSY_TIMEOUT_MS = 30_000
 READ_CHUNK_SIZE_BYTES = 1024 * 1024
 
 
@@ -51,6 +55,10 @@ class Settings(BaseModel):
     openai_max_retries: int = Field(default=DEFAULT_OPENAI_MAX_RETRIES, ge=0)
     openai_retry_min_seconds: float = Field(default=DEFAULT_OPENAI_RETRY_MIN_SECONDS, gt=0)
     openai_retry_max_seconds: float = Field(default=DEFAULT_OPENAI_RETRY_MAX_SECONDS, gt=0)
+    db_commit_max_retries: int = Field(default=DEFAULT_DB_COMMIT_MAX_RETRIES, ge=0)
+    db_commit_retry_min_seconds: float = Field(default=DEFAULT_DB_COMMIT_RETRY_MIN_SECONDS, gt=0)
+    db_commit_retry_max_seconds: float = Field(default=DEFAULT_DB_COMMIT_RETRY_MAX_SECONDS, gt=0)
+    sqlite_busy_timeout_ms: int = Field(default=DEFAULT_SQLITE_BUSY_TIMEOUT_MS, gt=0)
 
     @field_validator("database_url")
     @classmethod
@@ -123,6 +131,19 @@ def get_settings() -> Settings:
         openai_retry_max_seconds=_parse_float_env(
             "OPENAI_RETRY_MAX_SECONDS",
             DEFAULT_OPENAI_RETRY_MAX_SECONDS,
+        ),
+        db_commit_max_retries=_parse_int_env("DB_COMMIT_MAX_RETRIES", DEFAULT_DB_COMMIT_MAX_RETRIES),
+        db_commit_retry_min_seconds=_parse_float_env(
+            "DB_COMMIT_RETRY_MIN_SECONDS",
+            DEFAULT_DB_COMMIT_RETRY_MIN_SECONDS,
+        ),
+        db_commit_retry_max_seconds=_parse_float_env(
+            "DB_COMMIT_RETRY_MAX_SECONDS",
+            DEFAULT_DB_COMMIT_RETRY_MAX_SECONDS,
+        ),
+        sqlite_busy_timeout_ms=_parse_int_env(
+            "SQLITE_BUSY_TIMEOUT_MS",
+            DEFAULT_SQLITE_BUSY_TIMEOUT_MS,
         ),
     )
 

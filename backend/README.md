@@ -37,7 +37,11 @@ The API is available at `http://127.0.0.1:8000`. OpenAPI docs at `/docs`.
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `API_KEY` | Yes | — | Shared secret sent in the `X-API-Key` header for all `/api/v1/*` routes |
-| `DATABASE_URL` | No | `sqlite:////tmp/orders.db` | SQLite database URL (must use `sqlite:///` scheme) |
+| `DATABASE_URL` | No | `sqlite:////tmp/orders.db` | Database URL (`sqlite://`, `postgresql://`, or `postgres://`) |
+| `DB_COMMIT_MAX_RETRIES` | No | `5` | Retry attempts for transient DB commit failures (SQLite lock, Postgres deadlock) |
+| `DB_COMMIT_RETRY_MIN_SECONDS` | No | `0.05` | Minimum backoff between DB commit retries (seconds) |
+| `DB_COMMIT_RETRY_MAX_SECONDS` | No | `0.5` | Maximum backoff between DB commit retries (seconds) |
+| `SQLITE_BUSY_TIMEOUT_MS` | No | `30000` | SQLite busy timeout (ms); used locally with WAL mode |
 | `OPENAI_API_KEY` | For upload | — | OpenAI API key for document patient-field extraction |
 | `OPENAI_MODEL` | No | `gpt-4o-mini` | OpenAI model name |
 | `OPENAI_TIMEOUT_SECONDS` | No | `60` | Timeout for LLM requests (seconds) |
@@ -58,7 +62,7 @@ The API is available at `http://127.0.0.1:8000`. OpenAPI docs at `/docs`.
 
 **Railway note:** The default SQLite path (`/tmp/orders.db`) is writable on Railway but **ephemeral** — data is lost on redeploy. For production persistence, set `DATABASE_URL` to a mounted volume path or migrate to Postgres.
 
-**SQLite concurrency:** Run uvicorn with a **single worker** (`--workers 1` or no `--workers` flag). SQLite does not handle concurrent writes well across multiple worker processes.
+**Database concurrency:** SQLite uses WAL mode and commit retries so request handlers and background activity-log writes can run concurrently during local development. Postgres (recommended on Railway) uses connection pooling; commit retries still cover rare deadlocks. Run uvicorn with a **single worker** (`--workers 1` or no `--workers` flag) when using SQLite across multiple processes.
 
 ## Authentication
 

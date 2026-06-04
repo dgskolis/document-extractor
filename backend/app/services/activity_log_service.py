@@ -1,6 +1,7 @@
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.db_commit import commit_with_retry
 from app.models.activity_log import ActivityLog
 
 DEFAULT_LIST_LIMIT = 100
@@ -23,7 +24,7 @@ def create_activity_log(
         response_time_ms=response_time_ms,
     )
     db.add(activity_log)
-    db.commit()
+    commit_with_retry(db)
     return activity_log
 
 
@@ -63,5 +64,5 @@ def prune_activity_logs(db: Session, *, max_entries: int) -> int:
         return 0
 
     db.execute(delete(ActivityLog).where(ActivityLog.id.in_(ids_to_delete)))
-    db.commit()
+    commit_with_retry(db)
     return len(ids_to_delete)

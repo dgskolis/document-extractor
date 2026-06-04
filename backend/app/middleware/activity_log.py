@@ -83,6 +83,7 @@ def _persist_activity_log_sync(
             response_time_ms=response_time_ms,
         )
     except Exception:
+        db.rollback()
         logger.exception(
             "Failed to persist activity log",
             extra={

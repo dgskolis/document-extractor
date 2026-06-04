@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.db_commit import commit_with_retry
 from app.models.order import Order, utc_now
 from app.schemas.order import OrderCreate, OrderStatus, OrderUpdate
 
@@ -29,7 +30,7 @@ def list_orders(db: Session, *, limit: int, offset: int) -> tuple[list[Order], i
 def create_order(db: Session, order_in: OrderCreate) -> Order:
     order = Order(**order_in.model_dump(), status=OrderStatus.COMPLETED.value)
     db.add(order)
-    db.commit()
+    commit_with_retry(db)
     db.refresh(order)
     return order
 
@@ -42,11 +43,11 @@ def update_order(db: Session, order: Order, order_in: OrderUpdate) -> Order:
         else:
             setattr(order, field, value)
     order.updated_at = utc_now()
-    db.commit()
+    commit_with_retry(db)
     db.refresh(order)
     return order
 
 
 def delete_order(db: Session, order: Order) -> None:
     db.delete(order)
-    db.commit()
+    commit_with_retry(db)

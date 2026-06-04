@@ -1,9 +1,23 @@
 import uuid
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app.db_commit import commit_with_retry
 from app.models.order import Order
+from app.schemas.order import OrderCreate
+from app.services import order_service
+
+
+@patch("app.services.order_service.commit_with_retry", wraps=commit_with_retry)
+def test_create_order_uses_commit_with_retry(
+    mock_commit_with_retry,
+    db_session,
+    sample_order_payload: dict[str, str],
+) -> None:
+    order_service.create_order(db_session, OrderCreate(**sample_order_payload))
+    mock_commit_with_retry.assert_called_once_with(db_session)
 
 
 def test_create_order(client: TestClient, sample_order_payload: dict[str, str]) -> None:

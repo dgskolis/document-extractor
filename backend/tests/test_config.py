@@ -62,6 +62,10 @@ def test_settings_upload_and_timeout_defaults() -> None:
     assert settings.openai_max_retries == 3
     assert settings.openai_retry_min_seconds == 1.0
     assert settings.openai_retry_max_seconds == 8.0
+    assert settings.db_commit_max_retries == 5
+    assert settings.db_commit_retry_min_seconds == 0.05
+    assert settings.db_commit_retry_max_seconds == 0.5
+    assert settings.sqlite_busy_timeout_ms == 30_000
 
 
 def test_get_settings_reads_document_and_retry_env(monkeypatch: pytest.MonkeyPatch) -> None:

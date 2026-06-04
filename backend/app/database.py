@@ -4,7 +4,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import BACKEND_DIR, settings
@@ -45,10 +45,43 @@ def get_sqlalchemy_database_url(database_url: str | None = None) -> str:
     return f"sqlite:///{db_path}"
 
 
+def is_sqlite_url(database_url: str) -> bool:
+    return database_url.startswith("sqlite://")
+
+
+def is_postgres_url(database_url: str) -> bool:
+    return database_url.startswith("postgresql://") or database_url.startswith("postgres://")
+
+
+def _configure_sqlite_connection(dbapi_connection, _connection_record=None) -> None:
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute(f"PRAGMA busy_timeout={settings.sqlite_busy_timeout_ms}")
+    cursor.close()
+
+
 def _create_engine(database_url: str | None = None):
     url = get_sqlalchemy_database_url(database_url)
-    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    return create_engine(url, connect_args=connect_args)
+    source_url = database_url or settings.database_url
+
+    if is_sqlite_url(source_url):
+        connect_args = {
+            "check_same_thread": False,
+            "timeout": settings.sqlite_busy_timeout_ms / 1000,
+        }
+        eng = create_engine(url, connect_args=connect_args)
+        event.listen(eng, "connect", _configure_sqlite_connection)
+        return eng
+
+    if is_postgres_url(source_url):
+        return create_engine(
+            url,
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=10,
+        )
+
+    return create_engine(url)
 
 
 engine = _create_engine()

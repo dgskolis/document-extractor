@@ -41,7 +41,13 @@ The API is available at `http://127.0.0.1:8000`. OpenAPI docs at `/docs`.
 | `OPENAI_API_KEY` | For upload | — | OpenAI API key for document patient-field extraction |
 | `OPENAI_MODEL` | No | `gpt-4o-mini` | OpenAI model name |
 | `OPENAI_TIMEOUT_SECONDS` | No | `60` | Timeout for LLM requests (seconds) |
+| `OPENAI_MAX_RETRIES` | No | `3` | Max retry attempts for transient OpenAI failures |
+| `OPENAI_RETRY_MIN_SECONDS` | No | `1` | Minimum backoff between OpenAI retries (seconds) |
+| `OPENAI_RETRY_MAX_SECONDS` | No | `8` | Maximum backoff between OpenAI retries (seconds) |
 | `MAX_UPLOAD_SIZE_BYTES` | No | `26214400` | Max upload size for document endpoint (25 MB) |
+| `MAX_DOCUMENT_PAGES` | No | `50` | Max PDF/image pages processed per upload |
+| `DOCUMENT_PROCESSING_TIMEOUT_SECONDS` | No | `180` | Cooperative deadline for text/OCR extraction (seconds) |
+| `UPLOAD_MAX_WORKERS` | No | `2` | Dedicated thread pool size for document upload processing |
 | `MAX_DOCUMENT_TEXT_CHARS` | No | `100000` | Max characters of extracted document text sent to the LLM |
 | `TESSERACT_CMD` | No | — | Path to the Tesseract binary when it is not on `PATH` |
 | `TESSERACT_LANG` | No | `eng` | Tesseract language code(s) for OCR fallback |

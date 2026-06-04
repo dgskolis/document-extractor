@@ -1,9 +1,12 @@
 import logging
+from collections.abc import Iterator
 from datetime import date
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AuthenticationError, PermissionDeniedError, RateLimitError
 from pydantic import BaseModel, ConfigDict, ValidationError
+from tenacity import Retrying, retry_if_exception, stop_after_attempt, wait_exponential
 
 from app.config import settings
 from app.exceptions import OpenAIConfigurationError, PatientExtractionError
@@ -184,7 +187,54 @@ def _build_llm(*, reference_id: str | None = None) -> ChatOpenAI:
         model=settings.openai_model,
         temperature=0,
         timeout=settings.openai_timeout_seconds,
+        max_retries=0,
     )
+
+
+def _iter_exception_chain(exc: BaseException) -> Iterator[BaseException]:
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = current.__cause__ or current.__context__
+
+
+def _is_openai_configuration_error(exc: BaseException) -> bool:
+    for err in _iter_exception_chain(exc):
+        if isinstance(err, (AuthenticationError, PermissionDeniedError)):
+            return True
+        if isinstance(err, APIStatusError) and err.status_code in {401, 403}:
+            return True
+    return False
+
+
+def _is_retryable_openai_error(exc: BaseException) -> bool:
+    if _is_openai_configuration_error(exc):
+        return False
+    for err in _iter_exception_chain(exc):
+        if isinstance(err, (APITimeoutError, APIConnectionError, RateLimitError)):
+            return True
+        if isinstance(err, APIStatusError) and (err.status_code == 429 or err.status_code >= 500):
+            return True
+    return False
+
+
+def _invoke_structured_llm(llm, messages: list) -> _RawExtractedPatientFields:
+    retrying = Retrying(
+        retry=retry_if_exception(_is_retryable_openai_error),
+        stop=stop_after_attempt(settings.openai_max_retries + 1),
+        wait=wait_exponential(
+            multiplier=1,
+            min=settings.openai_retry_min_seconds,
+            max=settings.openai_retry_max_seconds,
+        ),
+        reraise=True,
+    )
+    for attempt in retrying:
+        with attempt:
+            return llm.invoke(messages)
+    raise PatientExtractionError("Patient field extraction failed")
 
 
 def extract_patient_fields(
@@ -200,7 +250,7 @@ def extract_patient_fields(
     ]
 
     try:
-        result = llm.invoke(messages)
+        result = _invoke_structured_llm(llm, messages)
     except ValidationError as exc:
         if reference_id is not None:
             log_upload_event(
@@ -215,6 +265,18 @@ def extract_patient_fields(
             logger.warning("Structured extraction returned invalid patient fields", exc_info=exc)
         raise PatientExtractionError("Patient field extraction failed") from exc
     except Exception as exc:
+        if _is_openai_configuration_error(exc):
+            if reference_id is not None:
+                log_upload_event(
+                    logging.ERROR,
+                    "OpenAI authentication failed",
+                    reference_id=reference_id,
+                    stage="patient_extraction",
+                    reason_code=REASON_OPENAI_NOT_CONFIGURED,
+                    text_length=len(truncated_text),
+                    exc_info=exc,
+                )
+            raise OpenAIConfigurationError("OpenAI API key not configured or invalid") from exc
         if reference_id is not None:
             log_upload_event(
                 logging.ERROR,

@@ -10,6 +10,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models.activity_log import ActivityLog  # noqa: F401
 from app.models.order import Order  # noqa: F401
+from app.upload_executor import shutdown_upload_executor
 
 TEST_API_KEY = "test-api-key"
 
@@ -58,10 +59,13 @@ def client(db_engine) -> TestClient:
     ), patch(
         "app.main.activity_log_service.prune_activity_logs",
         return_value=0,
-    ), patch.object(settings, "api_key", TEST_API_KEY):
+    ), patch.object(settings, "api_key", TEST_API_KEY), patch(
+        "app.main.shutdown_upload_executor",
+    ):
         with TestClient(app, headers={"X-API-Key": TEST_API_KEY}) as test_client:
             yield test_client
     app.dependency_overrides.clear()
+    shutdown_upload_executor(wait=False)
 
 
 @pytest.fixture

@@ -56,6 +56,30 @@ def test_settings_upload_and_timeout_defaults() -> None:
     assert settings.openai_timeout_seconds == 60.0
     assert settings.activity_log_max_entries == 10_000
     assert settings.max_document_text_chars == 100_000
+    assert settings.max_document_pages == 50
+    assert settings.document_processing_timeout_seconds == 180.0
+    assert settings.upload_max_workers == 2
+    assert settings.openai_max_retries == 3
+    assert settings.openai_retry_min_seconds == 1.0
+    assert settings.openai_retry_max_seconds == 8.0
+
+
+def test_get_settings_reads_document_and_retry_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("MAX_DOCUMENT_PAGES", "10")
+    monkeypatch.setenv("DOCUMENT_PROCESSING_TIMEOUT_SECONDS", "90")
+    monkeypatch.setenv("UPLOAD_MAX_WORKERS", "4")
+    monkeypatch.setenv("OPENAI_MAX_RETRIES", "2")
+    try:
+        settings = get_settings()
+        assert settings.max_document_pages == 10
+        assert settings.document_processing_timeout_seconds == 90.0
+        assert settings.upload_max_workers == 4
+        assert settings.openai_max_retries == 2
+    finally:
+        get_settings.cache_clear()
 
 
 def test_get_settings_rejects_invalid_int_env(monkeypatch: pytest.MonkeyPatch) -> None:

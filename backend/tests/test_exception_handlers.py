@@ -55,8 +55,8 @@ def test_http_exception_with_extraction_returns_extraction_field(client: TestCli
 
     from app.schemas.document import ExtractedPatientFields
 
-    with patch("app.routes.orders.document_service.extract_text", return_value="Patient data"), patch(
-        "app.routes.orders.patient_extraction_service.extract_patient_fields",
+    with patch("app.services.upload_pipeline.document_service.extract_text", return_value="Patient data"), patch(
+        "app.services.upload_pipeline.patient_extraction_service.extract_patient_fields",
         return_value=ExtractedPatientFields(
             first_name="Jane",
             last_name=None,

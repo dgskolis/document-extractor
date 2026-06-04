@@ -1,17 +1,20 @@
 from datetime import date
 from io import BytesIO
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.exceptions import (
+    DocumentPageLimitExceededError,
+    DocumentProcessingTimeoutError,
     FileTooLargeError,
     PatientExtractionError,
     TextExtractionError,
     UnsupportedMediaTypeError,
 )
+from app.schemas.document import DocumentUploadResponse
 from app.models.order import Order
 from app.schemas.document import ExtractedPatientFields
 from app.schemas.upload_errors import GENERIC_UPLOAD_ERROR
@@ -37,8 +40,8 @@ def _upload_file(
     )
 
 
-@patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
-@patch("app.routes.orders.document_service.extract_text")
+@patch("app.services.upload_pipeline.patient_extraction_service.extract_patient_fields")
+@patch("app.services.upload_pipeline.document_service.extract_text")
 def test_upload_document_success(
     mock_extract_text,
     mock_extract_patient_fields,
@@ -63,8 +66,8 @@ def test_upload_document_success(
     assert "order" not in data
 
 
-@patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
-@patch("app.routes.orders.document_service.extract_text")
+@patch("app.services.upload_pipeline.patient_extraction_service.extract_patient_fields")
+@patch("app.services.upload_pipeline.document_service.extract_text")
 def test_upload_document_success_does_not_create_order(
     mock_extract_text,
     mock_extract_patient_fields,
@@ -85,8 +88,8 @@ def test_upload_document_success_does_not_create_order(
     assert order_count == 0
 
 
-@patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
-@patch("app.routes.orders.document_service.extract_text")
+@patch("app.services.upload_pipeline.patient_extraction_service.extract_patient_fields")
+@patch("app.services.upload_pipeline.document_service.extract_text")
 def test_upload_document_partial_extraction(
     mock_extract_text,
     mock_extract_patient_fields,
@@ -115,8 +118,8 @@ def test_upload_document_partial_extraction(
     assert order_count == 0
 
 
-@patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
-@patch("app.routes.orders.document_service.extract_text")
+@patch("app.services.upload_pipeline.patient_extraction_service.extract_patient_fields")
+@patch("app.services.upload_pipeline.document_service.extract_text")
 def test_upload_document_name_too_long(
     mock_extract_text,
     mock_extract_patient_fields,
@@ -138,8 +141,8 @@ def test_upload_document_name_too_long(
     assert order_count == 0
 
 
-@patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
-@patch("app.routes.orders.document_service.extract_text")
+@patch("app.services.upload_pipeline.patient_extraction_service.extract_patient_fields")
+@patch("app.services.upload_pipeline.document_service.extract_text")
 def test_upload_document_whitespace_only_names(
     mock_extract_text,
     mock_extract_patient_fields,
@@ -172,7 +175,7 @@ def test_upload_document_unsupported_media_type(client: TestClient) -> None:
     _assert_generic_upload_error(response.json())
 
 
-@patch("app.routes.orders.document_service.extract_text")
+@patch("app.services.upload_pipeline.document_service.extract_text")
 def test_upload_document_empty_text_extraction(mock_extract_text, client: TestClient) -> None:
     mock_extract_text.side_effect = TextExtractionError("Unable to extract text from document")
 
@@ -182,8 +185,8 @@ def test_upload_document_empty_text_extraction(mock_extract_text, client: TestCl
     _assert_generic_upload_error(response.json())
 
 
-@patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
-@patch("app.routes.orders.document_service.extract_text")
+@patch("app.services.upload_pipeline.patient_extraction_service.extract_patient_fields")
+@patch("app.services.upload_pipeline.document_service.extract_text")
 def test_upload_document_llm_failure(
     mock_extract_text,
     mock_extract_patient_fields,
@@ -198,8 +201,8 @@ def test_upload_document_llm_failure(
     _assert_generic_upload_error(response.json())
 
 
-@patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
-@patch("app.routes.orders.document_service.extract_text")
+@patch("app.services.upload_pipeline.patient_extraction_service.extract_patient_fields")
+@patch("app.services.upload_pipeline.document_service.extract_text")
 def test_upload_document_missing_openai_key(
     mock_extract_text,
     mock_extract_patient_fields,
@@ -216,8 +219,8 @@ def test_upload_document_missing_openai_key(
     _assert_generic_upload_error(response.json())
 
 
-@patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
-@patch("app.routes.orders.document_service.extract_text")
+@patch("app.services.upload_pipeline.patient_extraction_service.extract_patient_fields")
+@patch("app.services.upload_pipeline.document_service.extract_text")
 def test_upload_document_route_not_treated_as_order_id(
     mock_extract_text,
     mock_extract_patient_fields,
@@ -237,8 +240,8 @@ def test_upload_document_route_not_treated_as_order_id(
     assert "order" not in response.json()
 
 
-@patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
-@patch("app.routes.orders.document_service.extract_text")
+@patch("app.services.upload_pipeline.patient_extraction_service.extract_patient_fields")
+@patch("app.services.upload_pipeline.document_service.extract_text")
 def test_upload_document_future_dob_treated_as_partial(
     mock_extract_text,
     mock_extract_patient_fields,
@@ -260,7 +263,7 @@ def test_upload_document_future_dob_treated_as_partial(
     assert order_count == 0
 
 
-@patch("app.routes.orders.document_service.read_upload_content")
+@patch("app.services.upload_pipeline.document_service.read_upload_content")
 def test_upload_document_file_too_large(mock_read_upload_content, client: TestClient) -> None:
     mock_read_upload_content.side_effect = FileTooLargeError(
         "Uploaded file exceeds maximum size of 26214400 bytes",
@@ -361,8 +364,8 @@ def test_extract_patient_fields_truncates_long_document_text(mock_build_llm) -> 
     assert sent_text == "x" * 100
 
 
-@patch("app.routes.orders.patient_extraction_service.extract_patient_fields")
-@patch("app.routes.orders.document_service.extract_text")
+@patch("app.services.upload_pipeline.patient_extraction_service.extract_patient_fields")
+@patch("app.services.upload_pipeline.document_service.extract_text")
 def test_upload_document_partial_extraction_logs_without_pii(
     mock_extract_text,
     mock_extract_patient_fields,
@@ -389,3 +392,57 @@ def test_upload_document_partial_extraction_logs_without_pii(
     assert "1990-05-15" not in caplog.text
     assert body["reference_id"] in caplog.text
     assert "partial_extraction" in caplog.text
+
+
+@patch("app.services.upload_pipeline.document_service.extract_text")
+def test_upload_document_page_limit_returns_422(mock_extract_text, client: TestClient) -> None:
+    mock_extract_text.side_effect = DocumentPageLimitExceededError(
+        "Document has 51 pages; maximum is 50",
+    )
+
+    response = _upload_file(client)
+
+    assert response.status_code == 422
+    _assert_generic_upload_error(response.json())
+
+
+@patch("app.services.upload_pipeline.document_service.extract_text")
+def test_upload_document_processing_timeout_returns_422(mock_extract_text, client: TestClient) -> None:
+    mock_extract_text.side_effect = DocumentProcessingTimeoutError(
+        "Document processing exceeded configured timeout",
+    )
+
+    response = _upload_file(client)
+
+    assert response.status_code == 422
+    _assert_generic_upload_error(response.json())
+
+
+@patch("app.routes.orders.run_upload_task", new_callable=AsyncMock)
+@patch("app.services.upload_pipeline.patient_extraction_service.extract_patient_fields")
+@patch("app.services.upload_pipeline.document_service.extract_text")
+def test_upload_document_delegates_to_upload_executor(
+    mock_extract_text,
+    mock_extract_patient_fields,
+    mock_run_upload_task,
+    client: TestClient,
+) -> None:
+    mock_extract_text.return_value = "Patient: Jane Doe, DOB 1990-05-15"
+    mock_extract_patient_fields.return_value = ExtractedPatientFields(
+        first_name="Jane",
+        last_name="Doe",
+        date_of_birth=date(1990, 5, 15),
+    )
+    mock_run_upload_task.return_value = DocumentUploadResponse(
+        extraction=ExtractedPatientFields(
+            first_name="Jane",
+            last_name="Doe",
+            date_of_birth=date(1990, 5, 15),
+        ),
+    )
+
+    response = _upload_file(client)
+
+    assert response.status_code == 201
+    mock_run_upload_task.assert_awaited_once()
+    assert mock_run_upload_task.await_args.args[0].__name__ == "process_upload_sync"

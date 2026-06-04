@@ -6,7 +6,13 @@ from fastapi import UploadFile
 from pytesseract import TesseractNotFoundError
 
 from app.config import READ_CHUNK_SIZE_BYTES, settings
-from app.exceptions import FileTooLargeError, TextExtractionError, UnsupportedMediaTypeError
+from app.exceptions import (
+    DocumentPageLimitExceededError,
+    DocumentProcessingTimeoutError,
+    FileTooLargeError,
+    TextExtractionError,
+    UnsupportedMediaTypeError,
+)
 from app.logging_context import log_upload_event
 from app.schemas.upload_errors import (
     REASON_OCR_FALLBACK,
@@ -15,6 +21,11 @@ from app.schemas.upload_errors import (
     REASON_UNSUPPORTED_MEDIA_TYPE,
 )
 from app.services import ocr_service
+from app.services.document_processing_limits import (
+    assert_page_limit,
+    check_processing_deadline,
+    processing_deadline,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +85,26 @@ def read_upload_content(
     return b"".join(chunks)
 
 
+def _extract_native_text(
+    document: fitz.Document,
+    *,
+    deadline: float,
+    reference_id: str | None = None,
+    content_type: str | None = None,
+    content_length: int | None = None,
+) -> list[str]:
+    text_parts: list[str] = []
+    for page in document:
+        check_processing_deadline(
+            deadline,
+            reference_id=reference_id,
+            content_type=content_type,
+            content_length=content_length,
+        )
+        text_parts.append(page.get_text())
+    return text_parts
+
+
 def extract_text(
     content: bytes,
     content_type: str | None,
@@ -127,9 +158,24 @@ def extract_text(
             logger.exception("Failed to open document for text extraction")
         raise TextExtractionError("Unable to extract text from document") from exc
 
+    deadline = processing_deadline()
     try:
+        assert_page_limit(
+            document,
+            reference_id=reference_id,
+            content_type=content_type,
+            content_length=len(content),
+        )
         try:
-            text_parts = [page.get_text() for page in document]
+            text_parts = _extract_native_text(
+                document,
+                deadline=deadline,
+                reference_id=reference_id,
+                content_type=content_type,
+                content_length=len(content),
+            )
+        except (DocumentPageLimitExceededError, DocumentProcessingTimeoutError):
+            raise
         except Exception as exc:
             if reference_id is not None:
                 log_upload_event(
@@ -161,7 +207,15 @@ def extract_text(
             )
 
         try:
-            text = ocr_service.ocr_document(document, reference_id=reference_id)
+            text = ocr_service.ocr_document(
+                document,
+                reference_id=reference_id,
+                deadline=deadline,
+                content_type=content_type,
+                content_length=len(content),
+            )
+        except (DocumentPageLimitExceededError, DocumentProcessingTimeoutError):
+            raise
         except TesseractNotFoundError as exc:
             raise TextExtractionError("Unable to extract text from document") from exc
         except Exception as exc:

@@ -6,6 +6,7 @@ from PIL import Image
 from pytesseract import TesseractNotFoundError
 
 from app.config import settings
+from app.services.document_processing_limits import check_processing_deadline
 from app.logging_context import log_upload_event
 from app.schemas.upload_errors import REASON_OCR_FAILED, REASON_OCR_UNAVAILABLE
 
@@ -29,12 +30,22 @@ def ocr_document(
     *,
     reference_id: str | None = None,
     dpi: int | None = None,
+    deadline: float | None = None,
+    content_type: str | None = None,
+    content_length: int | None = None,
 ) -> str:
     _configure_tesseract()
     text_parts: list[str] = []
 
     try:
         for page in document:
+            if deadline is not None:
+                check_processing_deadline(
+                    deadline,
+                    reference_id=reference_id,
+                    content_type=content_type,
+                    content_length=content_length,
+                )
             page_text = ocr_page(page, dpi=dpi).strip()
             if page_text:
                 text_parts.append(page_text)

@@ -3,7 +3,11 @@ import pytest
 from pytesseract import TesseractNotFoundError
 from unittest.mock import patch
 
-from app.exceptions import TextExtractionError
+from app.exceptions import (
+    DocumentPageLimitExceededError,
+    DocumentProcessingTimeoutError,
+    TextExtractionError,
+)
 from app.services import document_service, ocr_service
 
 
@@ -19,6 +23,15 @@ def _build_text_pdf(text: str) -> bytes:
 def _build_blank_pdf() -> bytes:
     document = fitz.open()
     document.new_page()
+    content = document.tobytes()
+    document.close()
+    return content
+
+
+def _build_multi_page_pdf(page_count: int) -> bytes:
+    document = fitz.open()
+    for _ in range(page_count):
+        document.new_page()
     content = document.tobytes()
     document.close()
     return content
@@ -72,6 +85,51 @@ def test_ocr_document_joins_non_empty_page_text() -> None:
         text = ocr_service.ocr_document(document)
 
     assert text == "First page\nSecond page"
+
+
+def test_extract_text_rejects_documents_over_page_limit() -> None:
+    pdf_content = _build_multi_page_pdf(3)
+
+    with patch("app.services.document_processing_limits.settings") as mock_settings:
+        mock_settings.max_document_pages = 2
+        with pytest.raises(DocumentPageLimitExceededError, match="maximum is 2"):
+            document_service.extract_text(pdf_content, "application/pdf", "large.pdf")
+
+
+def test_extract_text_raises_when_processing_deadline_exceeded() -> None:
+    pdf_content = _build_text_pdf("Patient: Jane Doe")
+
+    with patch(
+        "app.services.document_processing_limits.time.monotonic",
+        side_effect=[0, 200],
+    ):
+        with pytest.raises(DocumentProcessingTimeoutError, match="timeout"):
+            document_service.extract_text(
+                pdf_content,
+                "application/pdf",
+                "doc.pdf",
+                reference_id="ref-timeout",
+            )
+
+
+def test_ocr_document_raises_when_processing_deadline_exceeded() -> None:
+    document = fitz.open()
+    document.new_page()
+    document.new_page()
+
+    with patch(
+        "app.services.document_processing_limits.time.monotonic",
+        side_effect=[100, 300],
+    ), patch(
+        "app.services.ocr_service.ocr_page",
+        return_value="page text",
+    ):
+        with pytest.raises(DocumentProcessingTimeoutError, match="timeout"):
+            ocr_service.ocr_document(
+                document,
+                reference_id="ref-ocr-timeout",
+                deadline=200,
+            )
 
 
 def test_ocr_document_raises_when_tesseract_is_unavailable() -> None:

@@ -10,6 +10,14 @@ class TextExtractionError(Exception):
     """Raised when text cannot be extracted from a document."""
 
 
+class DocumentPageLimitExceededError(TextExtractionError):
+    """Raised when a document exceeds the configured page limit."""
+
+
+class DocumentProcessingTimeoutError(TextExtractionError):
+    """Raised when document text/OCR processing exceeds the configured deadline."""
+
+
 class OpenAIConfigurationError(Exception):
     """Raised when OpenAI is not configured."""
 

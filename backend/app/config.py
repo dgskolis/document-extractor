@@ -19,6 +19,12 @@ DEFAULT_ACTIVITY_LOG_MAX_ENTRIES = 10_000
 DEFAULT_MAX_DOCUMENT_TEXT_CHARS = 100_000
 DEFAULT_OCR_DPI = 300
 DEFAULT_TESSERACT_LANG = "eng"
+DEFAULT_MAX_DOCUMENT_PAGES = 50
+DEFAULT_DOCUMENT_PROCESSING_TIMEOUT_SECONDS = 180.0
+DEFAULT_UPLOAD_MAX_WORKERS = 2
+DEFAULT_OPENAI_MAX_RETRIES = 3
+DEFAULT_OPENAI_RETRY_MIN_SECONDS = 1.0
+DEFAULT_OPENAI_RETRY_MAX_SECONDS = 8.0
 READ_CHUNK_SIZE_BYTES = 1024 * 1024
 
 
@@ -36,6 +42,15 @@ class Settings(BaseModel):
     tesseract_cmd: str | None = Field(default=None)
     tesseract_lang: str = Field(default=DEFAULT_TESSERACT_LANG)
     ocr_dpi: int = Field(default=DEFAULT_OCR_DPI, gt=0)
+    max_document_pages: int = Field(default=DEFAULT_MAX_DOCUMENT_PAGES, gt=0)
+    document_processing_timeout_seconds: float = Field(
+        default=DEFAULT_DOCUMENT_PROCESSING_TIMEOUT_SECONDS,
+        gt=0,
+    )
+    upload_max_workers: int = Field(default=DEFAULT_UPLOAD_MAX_WORKERS, gt=0)
+    openai_max_retries: int = Field(default=DEFAULT_OPENAI_MAX_RETRIES, ge=0)
+    openai_retry_min_seconds: float = Field(default=DEFAULT_OPENAI_RETRY_MIN_SECONDS, gt=0)
+    openai_retry_max_seconds: float = Field(default=DEFAULT_OPENAI_RETRY_MAX_SECONDS, gt=0)
 
     @field_validator("database_url")
     @classmethod
@@ -94,6 +109,21 @@ def get_settings() -> Settings:
         tesseract_cmd=_strip_optional_env("TESSERACT_CMD"),
         tesseract_lang=os.getenv("TESSERACT_LANG", DEFAULT_TESSERACT_LANG),
         ocr_dpi=_parse_int_env("OCR_DPI", DEFAULT_OCR_DPI),
+        max_document_pages=_parse_int_env("MAX_DOCUMENT_PAGES", DEFAULT_MAX_DOCUMENT_PAGES),
+        document_processing_timeout_seconds=_parse_float_env(
+            "DOCUMENT_PROCESSING_TIMEOUT_SECONDS",
+            DEFAULT_DOCUMENT_PROCESSING_TIMEOUT_SECONDS,
+        ),
+        upload_max_workers=_parse_int_env("UPLOAD_MAX_WORKERS", DEFAULT_UPLOAD_MAX_WORKERS),
+        openai_max_retries=_parse_int_env("OPENAI_MAX_RETRIES", DEFAULT_OPENAI_MAX_RETRIES),
+        openai_retry_min_seconds=_parse_float_env(
+            "OPENAI_RETRY_MIN_SECONDS",
+            DEFAULT_OPENAI_RETRY_MIN_SECONDS,
+        ),
+        openai_retry_max_seconds=_parse_float_env(
+            "OPENAI_RETRY_MAX_SECONDS",
+            DEFAULT_OPENAI_RETRY_MAX_SECONDS,
+        ),
     )
 
 

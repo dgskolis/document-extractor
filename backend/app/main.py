@@ -10,6 +10,7 @@ from app.exception_handlers import register_exception_handlers
 from app.middleware.activity_log import ActivityLogMiddleware
 from app.routes import health_router, logs_router, orders_router
 from app.services import activity_log_service
+from app.upload_executor import shutdown_upload_executor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI):
         db.close()
     logger.info("Application startup complete")
     yield
+    shutdown_upload_executor(wait=False)
 
 
 app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=lifespan)

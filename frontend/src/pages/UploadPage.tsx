@@ -11,22 +11,34 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { useUpload } from "@/hooks/useUpload";
 import type { ExtractedPatient } from "@/types";
 
+function formatMissingFieldsMessage(fields: string[]): string {
+  if (fields.length === 1) {
+    return `We couldn't extract ${fields[0]}. Please complete the missing value below.`;
+  }
+
+  return `We couldn't extract the following fields: ${fields.join(", ")}. Please complete the missing values below.`;
+}
+
 export default function UploadPage() {
   usePageTitle("Upload");
 
   const {
     file,
     extractedPatient,
-    extractionFailed,
+    extractionStatus,
+    missingFields,
     referenceId,
     processing,
     progress,
     selectFile,
     processDocument,
   } = useUpload();
-  const [prefillData, setPrefillData] = useState<ExtractedPatient | null>(
+  const [manualPrefill, setManualPrefill] = useState<ExtractedPatient | null>(
     null,
   );
+
+  const formPrefill =
+    extractionStatus === "partial" ? extractedPatient : manualPrefill;
 
   const handleFileSelect = (selectedFile: File) => {
     const accepted = selectFile(selectedFile);
@@ -36,7 +48,7 @@ export default function UploadPage() {
   };
 
   const handlePrefill = (data: ExtractedPatient) => {
-    setPrefillData(data);
+    setManualPrefill(data);
     toast.success("Form pre-filled with extracted data");
   };
 
@@ -44,7 +56,7 @@ export default function UploadPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold tracking-tight">Upload</h1>
 
-      <ManualOrderForm prefill={prefillData} disabled={processing} />
+      <ManualOrderForm prefill={formPrefill} disabled={processing} />
 
       <Separator />
 
@@ -58,7 +70,7 @@ export default function UploadPage() {
           onFileSelect={handleFileSelect}
           onProcess={() => void processDocument()}
         />
-        {extractionFailed && !processing && (
+        {extractionStatus === "failed" && !processing && (
           <Alert variant="destructive">
             <AlertTitle>Extraction failed</AlertTitle>
             <AlertDescription>
@@ -72,7 +84,17 @@ export default function UploadPage() {
             </AlertDescription>
           </Alert>
         )}
-        {extractedPatient && !processing && (
+        {extractionStatus === "partial" && !processing && missingFields.length > 0 && (
+          <Alert>
+            <AlertTitle>Partial extraction</AlertTitle>
+            <AlertDescription>
+              {formatMissingFieldsMessage(missingFields)}
+            </AlertDescription>
+          </Alert>
+        )}
+        {extractedPatient &&
+          (extractionStatus === "complete" || extractionStatus === "partial") &&
+          !processing && (
           <ExtractedDataCard
             data={extractedPatient}
             onPrefill={handlePrefill}

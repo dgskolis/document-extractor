@@ -47,11 +47,13 @@ export function ManualOrderForm({
 
   useEffect(() => {
     if (prefill) {
-      reset({
-        patient_first_name: prefill.patient_first_name,
-        patient_last_name: prefill.patient_last_name,
-        date_of_birth: prefill.date_of_birth,
-      });
+      reset((current) => ({
+        patient_first_name:
+          prefill.patient_first_name || current.patient_first_name,
+        patient_last_name:
+          prefill.patient_last_name || current.patient_last_name,
+        date_of_birth: prefill.date_of_birth || current.date_of_birth,
+      }));
     }
   }, [prefill, reset]);
 

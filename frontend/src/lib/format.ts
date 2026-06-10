@@ -12,6 +12,19 @@ export function formatDate(iso: string): string {
   }).format(new Date(iso));
 }
 
+export function formatDateOptional(iso: string): string {
+  if (!iso) {
+    return "Not extracted";
+  }
+
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Not extracted";
+  }
+
+  return formatDate(iso);
+}
+
 export function statusBadgeVariant(
   status: OrderStatus,
 ): "secondary" | "default" | "outline" {

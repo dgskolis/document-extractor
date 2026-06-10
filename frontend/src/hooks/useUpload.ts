@@ -4,10 +4,14 @@ import { useCallback, useState } from "react";
 import { uploadDocument } from "@/api/orders";
 import { isUploadDocumentError } from "@/api/upload-errors";
 import {
+  getMissingExtractionFields,
   hasExtractedPatientData,
+  isExtractedPatientComplete,
   isExtractedPatientEmpty,
 } from "@/lib/extraction";
 import type { ExtractedPatient } from "@/types";
+
+export type ExtractionStatus = "idle" | "complete" | "partial" | "failed";
 
 const PDF_MIME = "application/pdf";
 
@@ -21,7 +25,9 @@ export function useUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [extractedPatient, setExtractedPatient] =
     useState<ExtractedPatient | null>(null);
-  const [extractionFailed, setExtractionFailed] = useState(false);
+  const [extractionStatus, setExtractionStatus] =
+    useState<ExtractionStatus>("idle");
+  const [missingFields, setMissingFields] = useState<string[]>([]);
   const [referenceId, setReferenceId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
 
@@ -33,29 +39,41 @@ export function useUpload() {
 
       if (isExtractedPatientEmpty(result)) {
         setExtractedPatient(null);
-        setExtractionFailed(true);
+        setMissingFields([]);
+        setExtractionStatus("failed");
         return;
       }
 
       setExtractedPatient(result);
-      setExtractionFailed(false);
+      if (isExtractedPatientComplete(result)) {
+        setMissingFields([]);
+        setExtractionStatus("complete");
+        return;
+      }
+
+      setMissingFields(getMissingExtractionFields(result));
+      setExtractionStatus("partial");
     },
     onError: (error) => {
       if (isUploadDocumentError(error)) {
         setReferenceId(error.referenceId);
         if (error.partialPatient && hasExtractedPatientData(error.partialPatient)) {
           setExtractedPatient(error.partialPatient);
+          setMissingFields(getMissingExtractionFields(error.partialPatient));
+          setExtractionStatus("partial");
         } else {
           setExtractedPatient(null);
+          setMissingFields([]);
+          setExtractionStatus("failed");
         }
-        setExtractionFailed(true);
         setProgress(0);
         return;
       }
 
       setExtractedPatient(null);
       setReferenceId(null);
-      setExtractionFailed(true);
+      setMissingFields([]);
+      setExtractionStatus("failed");
       setProgress(0);
     },
   });
@@ -64,7 +82,8 @@ export function useUpload() {
     if (!selectedFile) {
       setFile(null);
       setExtractedPatient(null);
-      setExtractionFailed(false);
+      setExtractionStatus("idle");
+      setMissingFields([]);
       setReferenceId(null);
       setProgress(0);
       return true;
@@ -76,7 +95,8 @@ export function useUpload() {
 
     setFile(selectedFile);
     setExtractedPatient(null);
-    setExtractionFailed(false);
+    setExtractionStatus("idle");
+    setMissingFields([]);
     setReferenceId(null);
     setProgress(0);
     return true;
@@ -85,7 +105,8 @@ export function useUpload() {
   const clearFile = useCallback(() => {
     setFile(null);
     setExtractedPatient(null);
-    setExtractionFailed(false);
+    setExtractionStatus("idle");
+    setMissingFields([]);
     setReferenceId(null);
     setProgress(0);
   }, []);
@@ -97,7 +118,8 @@ export function useUpload() {
 
     setProgress(0);
     setExtractedPatient(null);
-    setExtractionFailed(false);
+    setExtractionStatus("idle");
+    setMissingFields([]);
     setReferenceId(null);
 
     const startTime = Date.now();
@@ -119,7 +141,8 @@ export function useUpload() {
   return {
     file,
     extractedPatient,
-    extractionFailed,
+    extractionStatus,
+    missingFields,
     referenceId,
     processing: uploadMutation.isPending,
     progress,

@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { formatDate } from "@/lib/format";
+import { formatDateOptional } from "@/lib/format";
 import type { ExtractedPatient } from "@/types";
 
 interface ExtractedDataCardProps {
@@ -16,10 +16,18 @@ interface ExtractedDataCardProps {
 }
 
 function DataRow({ label, value }: { label: string; value: string }) {
+  const isMissing = value === "Not extracted";
+
   return (
     <div className="flex flex-col gap-1">
       <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="text-sm font-medium">{value}</span>
+      <span
+        className={
+          isMissing ? "text-sm text-muted-foreground italic" : "text-sm font-medium"
+        }
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -34,9 +42,18 @@ export function ExtractedDataCard({ data, onPrefill }: ExtractedDataCardProps) {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <DataRow label="First name" value={data.patient_first_name} />
-        <DataRow label="Last name" value={data.patient_last_name} />
-        <DataRow label="Date of birth" value={formatDate(data.date_of_birth)} />
+        <DataRow
+          label="First name"
+          value={data.patient_first_name || "Not extracted"}
+        />
+        <DataRow
+          label="Last name"
+          value={data.patient_last_name || "Not extracted"}
+        />
+        <DataRow
+          label="Date of birth"
+          value={formatDateOptional(data.date_of_birth)}
+        />
       </CardContent>
       <CardFooter>
         <Button type="button" onClick={() => onPrefill(data)}>
